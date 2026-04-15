@@ -1,0 +1,891 @@
+/**
+ * components.css — 공통 컴포넌트 스타일
+ *
+ * 목적: TabBar, OfflineBanner, SyncStatusBar, ConfirmDialog,
+ *       TtsEchoDisplay 등 공통 컴포넌트의 스타일을 정의합니다.
+ */
+
+/* ─────────────────────────────────────────────
+   TabBar — 하단 탭 네비게이션
+───────────────────────────────────────────── */
+
+.tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--tab-bar-height) + env(safe-area-inset-bottom));
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: flex-start;
+  padding-top: 4px;
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 100;
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.tab-bar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-min);
+  gap: 3px;
+  padding: 4px 2px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+  position: relative;
+  border: none;
+  background: none;
+  font-family: var(--font-system);
+}
+
+.tab-bar-item.active {
+  color: var(--color-primary);
+}
+
+.tab-bar-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.tab-bar-label {
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+}
+
+/* ─────────────────────────────────────────────
+   OfflineBanner — 오프라인 배너
+───────────────────────────────────────────── */
+
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-error);
+  color: white;
+  text-align: center;
+  padding: 8px 16px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  z-index: 200;
+  padding-top: calc(8px + env(safe-area-inset-top));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.offline-banner-icon {
+  font-size: 16px;
+}
+
+/* ─────────────────────────────────────────────
+   SyncStatusBar — 동기화 상태 바
+───────────────────────────────────────────── */
+
+.sync-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--color-warning-bg);
+  border: 1px solid rgba(245, 124, 0, 0.3);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+}
+
+.sync-status-bar.synced {
+  background: var(--color-primary-bg);
+  border-color: rgba(46, 125, 50, 0.3);
+}
+
+.sync-status-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-warning);
+}
+
+.sync-status-bar.synced .sync-status-text {
+  color: var(--color-primary);
+}
+
+.sync-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  background: var(--color-warning);
+  color: white;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+  border: none;
+  font-family: var(--font-system);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ─────────────────────────────────────────────
+   ConfirmDialog — 확인 다이얼로그
+───────────────────────────────────────────── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay);
+  z-index: 300;
+  display: flex;
+  align-items: flex-end; /* 모바일: 바텀 시트 */
+  justify-content: center;
+  animation: overlayFadeIn 200ms ease;
+}
+
+@media (min-width: 481px) {
+  .dialog-overlay {
+    align-items: center; /* 태블릿+: 중앙 모달 */
+  }
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dialog-box {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 24px var(--padding-mobile);
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  width: 100%;
+  max-width: 480px;
+  animation: dialogSlideUp 250ms ease;
+}
+
+@media (min-width: 481px) {
+  .dialog-box {
+    border-radius: var(--radius-lg);
+    padding-bottom: 24px;
+    max-width: 400px;
+  }
+}
+
+@keyframes dialogSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.dialog-title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: 8px;
+  color: var(--color-text);
+}
+
+.dialog-message {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.dialog-btn {
+  flex: 1;
+  height: 48px;
+  border-radius: var(--radius);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+  border: none;
+  font-family: var(--font-system);
+}
+
+.dialog-btn-cancel {
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.dialog-btn-confirm {
+  background: var(--color-primary);
+  color: white;
+}
+
+.dialog-btn-danger {
+  background: var(--color-error);
+  color: white;
+}
+
+.dialog-btn:active {
+  opacity: 0.8;
+}
+
+/* ─────────────────────────────────────────────
+   TtsEchoDisplay — 음성 인식 결과 표시
+───────────────────────────────────────────── */
+
+.tts-echo-display {
+  position: fixed;
+  bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom) + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  pointer-events: auto;
+  text-align: center;
+  min-width: 200px;
+  max-width: 90vw;
+}
+
+.tts-echo-card {
+  background: rgba(33, 33, 33, 0.92);
+  color: white;
+  border-radius: var(--radius-lg);
+  padding: 12px 24px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.tts-echo-label {
+  font-size: var(--font-size-sm);
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.tts-echo-label.correction {
+  color: var(--color-warning);
+  opacity: 1;
+}
+
+.tts-echo-value {
+  font-size: 2rem; /* 최소 2rem = 32px */
+  font-weight: var(--font-weight-bold);
+  line-height: 1.2;
+  letter-spacing: 0.5px;
+}
+
+.tts-echo-hint {
+  font-size: var(--font-size-xs);
+  opacity: 0.5;
+  margin-top: 4px;
+}
+
+/* 페이드 애니메이션 */
+.tts-echo-display {
+  animation: echoFadeIn 200ms ease;
+}
+
+.tts-echo-display.fading {
+  animation: echoFadeOut 500ms ease forwards;
+}
+
+@keyframes echoFadeIn {
+  from { opacity: 0; transform: translateX(-50%) scale(0.9); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+
+@keyframes echoFadeOut {
+  from { opacity: 1; transform: translateX(-50%) scale(1); }
+  to { opacity: 0; transform: translateX(-50%) scale(0.95); }
+}
+
+/* ─────────────────────────────────────────────
+   FieldInputRow — 개별 필드 입력 행
+───────────────────────────────────────────── */
+
+.field-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border-light);
+  min-height: var(--touch-min);
+  gap: 8px;
+  transition: background var(--transition-fast);
+}
+
+.field-row:last-child {
+  border-bottom: none;
+}
+
+.field-row.highlighted {
+  background: var(--color-primary-bg);
+  margin: 0 -8px;
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+  border-bottom-color: transparent;
+}
+
+.field-row-label {
+  flex: 0 0 72px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.field-warning-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--color-warning);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.field-row-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-row-input {
+  flex: 1;
+  height: var(--touch-min);
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-base);
+  text-align: right;
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition: border-color var(--transition-fast);
+}
+
+.field-row-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.2);
+  outline: none;
+}
+
+.field-row-input.has-warning {
+  border-color: var(--color-warning);
+}
+
+.field-row-input:disabled,
+.field-row-input[readonly] {
+  background: var(--color-border-light);
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
+}
+
+.field-row-unit {
+  flex: 0 0 28px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+/* ─────────────────────────────────────────────
+   RecordCard — 레코드 카드
+───────────────────────────────────────────── */
+
+.record-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.record-card-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 12px;
+  cursor: pointer;
+  min-height: var(--touch-min);
+}
+
+.record-card-main {
+  flex: 1;
+}
+
+.record-card-id {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.record-card-values {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.record-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-icon-pending {
+  font-size: 18px;
+  color: var(--color-sync-pending);
+}
+
+.sync-icon-synced {
+  font-size: 18px;
+  color: var(--color-sync-done);
+}
+
+.sync-icon-error {
+  font-size: 18px;
+  color: var(--color-sync-error);
+}
+
+.record-card-detail {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--color-border-light);
+  background: var(--color-bg);
+}
+
+.record-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 16px;
+  padding-top: 12px;
+}
+
+.record-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.record-detail-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.record-detail-value {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.record-detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+/* ─────────────────────────────────────────────
+   SessionGroupList — 세션 그룹 헤더
+───────────────────────────────────────────── */
+
+.session-group {
+  margin-bottom: 16px;
+}
+
+.session-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--color-primary-bg);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+
+.session-group-info {
+  flex: 1;
+}
+
+.session-group-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+}
+
+.session-group-meta {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.session-group-count {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  background: white;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+/* ─────────────────────────────────────────────
+   SurveyInputPage — 세션 헤더 입력 영역
+───────────────────────────────────────────── */
+
+.session-header {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border);
+}
+
+.session-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.session-header-row:last-child {
+  margin-bottom: 0;
+}
+
+.session-header-label {
+  flex: 0 0 64px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.session-header-value {
+  flex: 1;
+}
+
+.session-header-select,
+.session-header-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  background: var(--color-surface);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.session-header-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24'%3E%3Cpath fill='%23757575' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+}
+
+/* ─────────────────────────────────────────────
+   측정값 입력 영역
+───────────────────────────────────────────── */
+
+.measurement-section {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border);
+}
+
+.measurement-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+
+/* ─────────────────────────────────────────────
+   저장 버튼 영역
+───────────────────────────────────────────── */
+
+.save-area {
+  padding: 16px 0 8px;
+}
+
+/* ─────────────────────────────────────────────
+   최근 세션 선택 바텀 시트
+───────────────────────────────────────────── */
+
+.bottom-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay);
+  z-index: 250;
+  animation: overlayFadeIn 200ms ease;
+}
+
+.bottom-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  z-index: 260;
+  max-height: 70vh;
+  overflow-y: auto;
+  animation: dialogSlideUp 250ms ease;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.bottom-sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  margin: 12px auto 0;
+}
+
+.bottom-sheet-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.bottom-sheet-title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.bottom-sheet-list {
+  padding: 8px 0;
+}
+
+.bottom-sheet-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  min-height: var(--touch-min);
+  border-bottom: 1px solid var(--color-border-light);
+  transition: background var(--transition-fast);
+}
+
+.bottom-sheet-item:last-child {
+  border-bottom: none;
+}
+
+.bottom-sheet-item:active {
+  background: var(--color-bg);
+}
+
+.bottom-sheet-item-main {
+  flex: 1;
+}
+
+.bottom-sheet-item-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.bottom-sheet-item-meta {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+/* ─────────────────────────────────────────────
+   Settings Page
+───────────────────────────────────────────── */
+
+.settings-section {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border);
+}
+
+.settings-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.farmer-name-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.farmer-name-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  min-height: var(--touch-min);
+}
+
+.farmer-name-text {
+  flex: 1;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+}
+
+.farmer-name-default-badge {
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.delete-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.delete-btn:hover {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+}
+
+.add-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.add-input-row input {
+  flex: 1;
+  height: var(--touch-min);
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-base);
+}
+
+.label-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.label-chip {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.label-chip.selected {
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.tree-range-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.tree-range-input {
+  flex: 1;
+  height: var(--touch-min);
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-base);
+  text-align: center;
+}
+
+.tree-range-separator {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.preset-info-box {
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  border: 1px solid var(--color-border-light);
+}
+
+.preset-info-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: 6px;
+  color: var(--color-text);
+}
+
+.preset-info-fields {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.8;
+}
+
+/* ─────────────────────────────────────────────
+   필터 바
+───────────────────────────────────────────── */
+
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.filter-chip {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  font-family: var(--font-system);
+}
+
+.filter-chip.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}

@@ -1,0 +1,51 @@
+/**
+ * tablet.css — 태블릿 미디어 쿼리 (~768px)
+ *
+ * 목적: 태블릿 화면에서의 2열 레이아웃 등 추가 스타일을 정의합니다.
+ *       모바일 스타일을 기반으로 점진적으로 확장합니다.
+ */
+
+@media (min-width: 481px) and (max-width: 768px) {
+
+  /* 레코드 카드 2열 그리드 */
+  .session-group-records {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  /* 측정값 필드 2열 그리드 */
+  #field-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0 24px;
+  }
+
+  /* 대화상자 중앙 모달 */
+  .dialog-overlay {
+    align-items: center;
+  }
+
+  .dialog-box {
+    border-radius: var(--radius-lg);
+    padding-bottom: 24px;
+    max-width: 400px;
+  }
+}
+
+@media (min-width: 769px) {
+
+  /* 레코드 카드 3열 그리드 */
+  .session-group-records {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  /* 측정값 필드 2열 그리드 */
+  #field-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0 32px;
+  }
+}

@@ -1,0 +1,431 @@
+/**
+ * mobile.css — 모바일 우선 레이아웃 (~480px)
+ *
+ * 목적: 스마트폰 화면에 최적화된 기본 레이아웃을 정의합니다.
+ *       터치 영역 최소 44px, Safe area 대응, 폰트 최소 16px 준수.
+ */
+
+/* ─────────────────────────────────────────────
+   앱 루트 레이아웃
+───────────────────────────────────────────── */
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh; /* 동적 viewport 높이 (iOS Safari 주소창 대응) */
+  position: relative;
+  overflow: hidden;
+}
+
+/* ─────────────────────────────────────────────
+   페이지 컨테이너
+───────────────────────────────────────────── */
+
+.page {
+  padding: var(--padding-mobile);
+  /* 하단 탭바 + safe area + 여백 확보 */
+  padding-bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom) + 16px);
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 페이지 헤더 */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--padding-mobile);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  min-height: var(--header-height);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.page-header h1 {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+/* ─────────────────────────────────────────────
+   폼 요소
+───────────────────────────────────────────── */
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-label {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+
+.form-input {
+  width: 100%;
+  height: var(--touch-min);
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  background: var(--color-surface);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.form-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.2);
+  outline: none;
+}
+
+.form-input.has-warning {
+  border-color: var(--color-warning);
+}
+
+.form-input.has-error {
+  border-color: var(--color-error);
+}
+
+/* select 화살표 커스텀 */
+select.form-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24'%3E%3Cpath fill='%23757575' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 32px;
+}
+
+/* 숫자 전용 입력 */
+.form-input-numeric {
+  text-align: right;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.5px;
+}
+
+/* ─────────────────────────────────────────────
+   버튼
+───────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  padding: 0 20px;
+  border-radius: var(--radius);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn:active {
+  opacity: 0.8;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #388e3c;
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+
+.btn-danger {
+  background: var(--color-error);
+  color: white;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.btn-full {
+  width: 100%;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─────────────────────────────────────────────
+   카드
+───────────────────────────────────────────── */
+
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  padding: var(--padding-mobile);
+  box-shadow: var(--shadow-sm);
+}
+
+.card + .card {
+  margin-top: 12px;
+}
+
+/* ─────────────────────────────────────────────
+   섹션 구분
+───────────────────────────────────────────── */
+
+.section {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+/* ─────────────────────────────────────────────
+   배지
+───────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.badge-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.badge-error {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.badge-success {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
+
+/* ─────────────────────────────────────────────
+   스피너 / 로딩
+───────────────────────────────────────────── */
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─────────────────────────────────────────────
+   스켈레톤
+───────────────────────────────────────────── */
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─────────────────────────────────────────────
+   빈 상태
+───────────────────────────────────────────── */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  gap: 12px;
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  line-height: 1;
+  opacity: 0.5;
+}
+
+.empty-state-text {
+  font-size: var(--font-size-base);
+}
+
+.empty-state-sub {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-disabled);
+}
+
+/* ─────────────────────────────────────────────
+   인라인 에러 메시지
+───────────────────────────────────────────── */
+
+.field-error {
+  font-size: var(--font-size-xs);
+  color: var(--color-error);
+  margin-top: 4px;
+}
+
+.field-warning {
+  font-size: var(--font-size-xs);
+  color: var(--color-warning);
+  margin-top: 4px;
+}
+
+/* ─────────────────────────────────────────────
+   탭 버튼 그룹 (비대/품질조사 전환)
+───────────────────────────────────────────── */
+
+.tab-group {
+  display: flex;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  padding: 3px;
+  gap: 3px;
+}
+
+.tab-group-item {
+  flex: 1;
+  height: var(--touch-min);
+  border-radius: calc(var(--radius) - 2px);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.tab-group-item.active {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ─────────────────────────────────────────────
+   체크박스 / 토글
+───────────────────────────────────────────── */
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-border-light);
+  min-height: var(--touch-min);
+}
+
+.toggle-row:last-child {
+  border-bottom: none;
+}
+
+.toggle-label {
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+}
+
+.toggle-description {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+/* iOS 스타일 토글 스위치 */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 51px;
+  height: 31px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  transition: background var(--transition-base);
+  cursor: pointer;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 27px;
+  height: 27px;
+  background: white;
+  border-radius: 50%;
+  transition: transform var(--transition-base);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--color-primary);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+}
+
+/* ─────────────────────────────────────────────
+   태블릿 이상 미디어 쿼리
+───────────────────────────────────────────── */
+
+@media (min-width: 481px) {
+  .page {
+    padding: var(--padding-tablet);
+    padding-bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom) + 24px);
+    max-width: 720px;
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 769px) {
+  .page {
+    max-width: 960px;
+  }
+}
