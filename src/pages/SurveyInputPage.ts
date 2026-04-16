@@ -15,19 +15,26 @@
  * 음성 UX:
  * - TtsEchoDisplay를 통해 인식 결과 표시
  * - VoiceStore.pendingField로 하이라이트된 행 표시
+ * - STT 토글 버튼으로 음성 입력 활성화/비활성화
+ * - SttService → parser → surveyStore 자동 필드 업데이트
  */
 
-import type { SurveyType, AppDefaults, GrowthRecord, QualityRecord, SessionFields, VoiceState, SurveyState } from '../types.js';
+import type { SurveyType, AppDefaults, GrowthRecord, QualityRecord, SessionFields, VoiceState, SurveyState, SttResultEvent } from '../types.js';
 import { surveyStore, voiceStore, syncStore } from '../store/index.js';
 import * as SettingsService from '../services/SettingsService.js';
 import * as IndexedDBService from '../services/IndexedDBService.js';
+import * as VoiceLogService from '../services/VoiceLogService.js';
+import { SttService } from '../services/SttService.js';
+import { TtsService } from '../services/TtsService.js';
+import { MediaRecorderService } from '../services/MediaRecorderService.js';
+import { parse } from '../parser/parser.js';
 import { showConfirm } from '../components/ConfirmDialog.js';
 import { TtsEchoDisplay } from '../components/TtsEchoDisplay.js';
 import { SyncStatusBar } from '../components/SyncStatusBar.js';
 import { validateRecord, validateField } from '../utils/validation.js';
 import { makeRecordId, makeSessionKey } from '../utils/recordKey.js';
 import { showToast } from '../utils/toast.js';
-import { todayString, formatDisplayDate } from '../utils/dateUtils.js';
+import { todayString, formatDisplayDate, nowIso } from '../utils/dateUtils.js';
 
 // ─────────────────────────────────────────────
 // 필드 정의 (비대조사 / 품질조사)
@@ -76,6 +83,16 @@ export class SurveyInputPage {
   private ttsEchoDisplay: TtsEchoDisplay | null = null;
   private syncStatusBar: SyncStatusBar | null = null;
   private isSaving = false;
+
+  // 음성 서비스 멤버 변수
+  private sttService: SttService | null = null;
+  private ttsService: TtsService | null = null;
+  private mediaRecorderService: MediaRecorderService | null = null;
+  private voiceBtnEl: HTMLButtonElement | null = null;
+  private isVoiceActive = false;
+  private voiceLogEnabled = false;
+  private audioRecordEnabled = false;
+  private ttsEnabled = true;
 
   // 세션 필드 값 (세션 헤더)
   private sessionFields: SessionFields = {
@@ -137,9 +154,25 @@ export class SurveyInputPage {
         this.onVoiceStoreUpdate(state);
       }),
     );
+
+    // 음성 서비스 초기화
+    await this.initVoiceServices();
   }
 
   unmount(): void {
+    // 음성 서비스 정리
+    if (this.sttService) {
+      this.sttService.stop();
+      this.sttService = null;
+    }
+    if (this.ttsService) {
+      this.ttsService.cancel();
+      this.ttsService = null;
+    }
+    this.mediaRecorderService = null;
+    this.voiceBtnEl = null;
+    this.isVoiceActive = false;
+
     this.unsubscribers.forEach((fn) => fn());
     this.unsubscribers = [];
 
@@ -279,8 +312,11 @@ export class SurveyInputPage {
             </div>
           </section>
 
-          <!-- 저장 버튼 -->
-          <div class="save-area">
+          <!-- 버튼 영역 -->
+          <div class="save-area" style="display:flex;gap:10px;align-items:center;">
+            <button class="btn btn-voice" id="voice-btn" type="button" style="width:52px;height:52px;border-radius:50%;font-size:22px;flex-shrink:0;background:var(--color-border);border:none;">
+              🎤
+            </button>
             <button class="btn btn-primary btn-full" id="save-btn" type="button" style="height:52px;font-size:18px;">
               저장
             </button>
@@ -532,6 +568,13 @@ export class SurveyInputPage {
     // 저장 버튼
     const saveBtn = this.el.querySelector('#save-btn');
     saveBtn?.addEventListener('click', () => this.handleSave());
+
+    // 음성 버튼
+    const voiceBtn = this.el.querySelector<HTMLButtonElement>('#voice-btn');
+    if (voiceBtn) {
+      this.voiceBtnEl = voiceBtn;
+      voiceBtn.addEventListener('click', () => this.toggleVoice());
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -666,6 +709,9 @@ export class SurveyInputPage {
       this.clearFruitNumberField();
 
       showToast('저장 완료', 'success');
+      if (this.isVoiceActive && this.ttsEnabled) {
+        this.ttsService?.speak('저장 완료');
+      }
 
       // 다음 입력 준비: 과실번호 입력 포커스
       fruitNoInput?.focus();
@@ -874,6 +920,275 @@ export class SurveyInputPage {
         surveyStore.updateField('fruitNo', val);
       }
     });
+  }
+
+  // ─────────────────────────────────────────────
+  // 음성 서비스
+  // ─────────────────────────────────────────────
+
+  /**
+   * 음성 서비스를 초기화합니다.
+   * 설정에서 ttsEnabled / voiceLogEnabled / audioRecordEnabled를 읽고
+   * SttService, TtsService, (옵션) MediaRecorderService를 생성합니다.
+   */
+  private async initVoiceServices(): Promise<void> {
+    try {
+      this.ttsEnabled = await SettingsService.get('ttsEnabled', true);
+      this.voiceLogEnabled = await SettingsService.get('voiceLogEnabled', true);
+      this.audioRecordEnabled = await SettingsService.get('audioRecordEnabled', false);
+    } catch {
+      // 설정 읽기 실패 시 기본값 유지
+    }
+
+    // STT 서비스 생성 및 콜백 등록
+    this.sttService = new SttService();
+
+    this.sttService.onResult = (event: SttResultEvent) => {
+      this.handleSttResult(event);
+    };
+
+    this.sttService.onInterim = (text: string) => {
+      voiceStore.setInterimText(text);
+    };
+
+    this.sttService.onStateChange = (state) => {
+      voiceStore.setSttStatus(state);
+    };
+
+    this.sttService.onError = (msg: string) => {
+      voiceStore.setError(msg);
+      // STT 오류 시 버튼 UI도 비활성 상태로 복원
+      this.isVoiceActive = false;
+      this.updateVoiceBtnUI(false);
+    };
+
+    // TTS 서비스 생성 및 콜백 등록
+    this.ttsService = new TtsService();
+
+    this.ttsService.onStart = () => {
+      voiceStore.setTtsSpeaking(true);
+    };
+
+    this.ttsService.onEnd = () => {
+      voiceStore.setTtsSpeaking(false);
+    };
+
+    // 오디오 녹음 서비스 (선택적)
+    if (this.audioRecordEnabled) {
+      this.mediaRecorderService = new MediaRecorderService();
+    }
+
+    // STT 미지원 브라우저에서 음성 버튼 비활성화
+    const w = window as unknown as Record<string, unknown>;
+    const hasStt = ('SpeechRecognition' in w) || ('webkitSpeechRecognition' in w);
+    if (!hasStt && this.voiceBtnEl) {
+      this.voiceBtnEl.disabled = true;
+      this.voiceBtnEl.title = '이 브라우저는 음성 인식을 지원하지 않습니다';
+      this.voiceBtnEl.style.opacity = '0.4';
+    }
+  }
+
+  /**
+   * STT 최종 인식 결과를 처리합니다.
+   *
+   * A. field 있고 score >= 0.5: 필드 업데이트 → TTS "{필드명} {값}"
+   * B. isCorrection: true (값만 발화): lastField 사용 → TTS "수정 {필드명} {값}"
+   * C. 인식 실패: TTS "다시 말씀해 주세요"
+   */
+  private handleSttResult(event: SttResultEvent): void {
+    // activeFields 목록 (auto 타입 제외)
+    const activeFieldKeys =
+      this.surveyType === 'growth'
+        ? ['width', 'height', 'remark']
+        : [
+            'width', 'height', 'fruitWeight', 'pericarpWeight',
+            'pericarpThickness', 'brix', 'titratableAcidity',
+            'acidContent', 'coloring', 'nonDestructive', 'remark',
+          ];
+
+    // 필드명 → TTS 텍스트 매핑
+    const fieldLabelMap: Record<string, string> = {
+      width: '횡경',
+      height: '종경',
+      fruitWeight: '과중',
+      pericarpWeight: '과피중',
+      pericarpThickness: '과피두께',
+      brix: '당도',
+      titratableAcidity: '적정산도',
+      acidContent: '산함량',
+      coloring: '착색',
+      nonDestructive: '비파괴',
+      remark: '비고',
+    };
+
+    const storeState = surveyStore.getState();
+    const result = parse(event.transcript, {
+      lastField: storeState.lastField,
+      surveyType: this.surveyType,
+      activeFields: activeFieldKeys,
+    });
+
+    const now = new Date().toISOString();
+
+    // A. field 있고 score >= 0.5
+    if (result.field !== null && result.score >= 0.5 && !result.isCorrection) {
+      const fieldKey = result.field;
+      const storeValue = result.numericValue !== null ? result.numericValue : (result.value ?? '');
+      surveyStore.updateField(fieldKey, storeValue);
+
+      // DOM input 갱신
+      const inputEl = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${fieldKey}"]`);
+      if (inputEl) {
+        inputEl.value = result.value ?? '';
+        this.fieldValues[fieldKey] = result.value ?? '';
+        this.updateWarningBadge(fieldKey, inputEl);
+      }
+
+      const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
+      const ttsText = `${fieldLabel} ${result.value ?? ''}`;
+      voiceStore.setEchoText(ttsText);
+      if (this.ttsEnabled) {
+        this.ttsService?.speak(ttsText);
+      }
+
+      voiceStore.setRecognitionResult(result);
+      setTimeout(() => voiceStore.clearPending(), 2000);
+
+      // 음성 로그 저장 (실패해도 계속)
+      if (this.voiceLogEnabled) {
+        VoiceLogService.saveLog({
+          ts: now,
+          kind: 'ok',
+          rawText: event.transcript,
+          alternatives: event.alternatives,
+          parse: {
+            field: result.field,
+            value: result.value,
+            score: result.score,
+            method: result.method,
+          },
+          status: 'accepted',
+          message: ttsText,
+          audioFileId: null,
+          session: storeState.sessionFields
+            ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
+            : undefined,
+        }).catch(() => {/* 로그 저장 실패 무시 */});
+      }
+      return;
+    }
+
+    // B. isCorrection: true (값만 발화 — lastField 사용)
+    if (result.isCorrection && result.field !== null) {
+      const fieldKey = result.field;
+      const storeValue = result.numericValue !== null ? result.numericValue : (result.value ?? '');
+      surveyStore.updateField(fieldKey, storeValue);
+
+      // DOM input 갱신
+      const inputEl = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${fieldKey}"]`);
+      if (inputEl) {
+        inputEl.value = result.value ?? '';
+        this.fieldValues[fieldKey] = result.value ?? '';
+        this.updateWarningBadge(fieldKey, inputEl);
+      }
+
+      const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
+      const ttsText = `수정 ${fieldLabel} ${result.value ?? ''}`;
+      voiceStore.setEchoText(ttsText);
+      if (this.ttsEnabled) {
+        this.ttsService?.speak(ttsText);
+      }
+
+      voiceStore.setRecognitionResult(result);
+      setTimeout(() => voiceStore.clearPending(), 2000);
+
+      if (this.voiceLogEnabled) {
+        VoiceLogService.saveLog({
+          ts: now,
+          kind: 'ok',
+          rawText: event.transcript,
+          alternatives: event.alternatives,
+          parse: {
+            field: result.field,
+            value: result.value,
+            score: result.score,
+            method: result.method,
+          },
+          status: 'corrected',
+          message: ttsText,
+          audioFileId: null,
+          session: storeState.sessionFields
+            ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
+            : undefined,
+        }).catch(() => {/* 로그 저장 실패 무시 */});
+      }
+      return;
+    }
+
+    // C. 인식 실패
+    const failTts = '다시 말씀해 주세요';
+    voiceStore.setEchoText(failTts);
+    if (this.ttsEnabled) {
+      this.ttsService?.speak(failTts);
+    }
+    voiceStore.setError('인식 실패');
+
+    if (this.voiceLogEnabled) {
+      VoiceLogService.saveLog({
+        ts: now,
+        kind: 'fail',
+        rawText: event.transcript,
+        alternatives: event.alternatives,
+        parse: {
+          field: result.field,
+          value: result.value,
+          score: result.score,
+          method: result.method,
+        },
+        status: 'rejected',
+        message: failTts,
+        audioFileId: null,
+        session: storeState.sessionFields
+          ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
+          : undefined,
+      }).catch(() => {/* 로그 저장 실패 무시 */});
+    }
+  }
+
+  /**
+   * 음성 버튼 토글: 음성 입력 시작/중지를 전환합니다.
+   */
+  private toggleVoice(): void {
+    if (!this.sttService) return;
+    if (this.isVoiceActive) {
+      this.sttService.stop();
+      this.isVoiceActive = false;
+      this.updateVoiceBtnUI(false);
+      if (this.ttsEnabled) this.ttsService?.speak('음성 입력 종료');
+    } else {
+      this.sttService.start();
+      this.isVoiceActive = true;
+      this.updateVoiceBtnUI(true);
+      if (this.ttsEnabled) this.ttsService?.speak('음성 입력 시작');
+    }
+  }
+
+  /**
+   * 음성 버튼 UI를 활성/비활성 상태에 맞게 업데이트합니다.
+   *
+   * @param active 활성 상태이면 true
+   */
+  private updateVoiceBtnUI(active: boolean): void {
+    if (!this.voiceBtnEl) return;
+    if (active) {
+      this.voiceBtnEl.innerHTML = '🔴';
+      this.voiceBtnEl.style.background = '#ffebee';
+      this.voiceBtnEl.title = '음성 입력 중 (탭하여 중지)';
+    } else {
+      this.voiceBtnEl.innerHTML = '🎤';
+      this.voiceBtnEl.style.background = 'var(--color-border)';
+      this.voiceBtnEl.title = '음성 입력 시작';
+    }
   }
 
   // ─────────────────────────────────────────────
