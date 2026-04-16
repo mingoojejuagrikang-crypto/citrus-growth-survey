@@ -5,7 +5,7 @@
  *       state-management.md의 SyncStore 설계를 구현합니다.
  */
 
-import { Observable } from './index.js';
+import { Observable } from './Observable.js';
 import type { SyncState, SyncResult } from '../types.js';
 import { nowIso } from '../utils/dateUtils.js';
 

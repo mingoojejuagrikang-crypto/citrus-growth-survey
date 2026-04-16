@@ -9,7 +9,7 @@
  * - sugarAcidRatio = brix / acidContent
  */
 
-import { Observable } from './index.js';
+import { Observable } from './Observable.js';
 import type {
   SurveyState,
   SessionFields,

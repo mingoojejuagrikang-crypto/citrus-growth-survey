@@ -5,7 +5,7 @@
  *       state-management.md의 VoiceStore 설계를 구현합니다.
  */
 
-import { Observable } from './index.js';
+import { Observable } from './Observable.js';
 import type { VoiceState, SttState, ParseResult } from '../types.js';
 
 // ─────────────────────────────────────────────

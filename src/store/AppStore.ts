@@ -5,7 +5,7 @@
  *       state-management.md의 AppStore 설계를 구현합니다.
  */
 
-import { Observable } from './index.js';
+import { Observable } from './Observable.js';
 import type { AppState } from '../types.js';
 
 // ─────────────────────────────────────────────

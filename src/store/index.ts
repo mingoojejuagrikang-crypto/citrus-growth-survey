@@ -6,62 +6,11 @@
  */
 
 // ─────────────────────────────────────────────
-// Observable 기반 클래스
+// Observable 기반 클래스 re-export
+// (순환 의존성 방지를 위해 Observable.ts에서 별도 정의)
 // ─────────────────────────────────────────────
 
-type Listener<T> = (state: Readonly<T>) => void;
-
-/**
- * 경량 옵저버 패턴 기반 상태 관리 클래스.
- * 컴포넌트는 subscribe()로 구독하고, 상태 변경 시 자동 알림을 받습니다.
- *
- * 사용 패턴:
- * - mount() 시 subscribe() 호출
- * - unmount() 시 반환된 unsubscribe 함수 호출 (메모리 누수 방지)
- */
-export class Observable<T extends object> {
-  private state: T;
-  private listeners: Set<Listener<T>> = new Set();
-
-  constructor(initialState: T) {
-    this.state = initialState;
-  }
-
-  /**
-   * 현재 상태의 불변(frozen) 복사본을 반환합니다.
-   * 직접 수정을 방지합니다.
-   *
-   * @returns Readonly<T>
-   */
-  getState(): Readonly<T> {
-    return Object.freeze({ ...this.state });
-  }
-
-  /**
-   * 상태를 부분 업데이트하고 모든 구독자에게 알립니다.
-   * 서브클래스에서만 호출 가능합니다.
-   *
-   * @param partial 업데이트할 상태 일부
-   */
-  protected setState(partial: Partial<T>): void {
-    this.state = { ...this.state, ...partial };
-    const frozenState = this.getState();
-    this.listeners.forEach((fn) => fn(frozenState));
-  }
-
-  /**
-   * 상태 변경 구독자를 등록합니다.
-   * 등록 즉시 현재 상태로 한 번 호출됩니다.
-   *
-   * @param fn 상태 변경 시 호출할 콜백
-   * @returns unsubscribe 함수 (mount/unmount 시 호출)
-   */
-  subscribe(fn: Listener<T>): () => void {
-    this.listeners.add(fn);
-    fn(this.getState()); // 즉시 현재 상태로 초기 호출
-    return () => this.listeners.delete(fn);
-  }
-}
+export { Observable } from './Observable.js';
 
 // ─────────────────────────────────────────────
 // 스토어 싱글턴 re-export
