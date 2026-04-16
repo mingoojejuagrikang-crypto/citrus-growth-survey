@@ -27,6 +27,7 @@ import { SettingsPage } from './pages/SettingsPage.js';
 import { SurveyInputPage } from './pages/SurveyInputPage.js';
 import { RecordListPage } from './pages/RecordListPage.js';
 import { VoiceLogPage } from './pages/VoiceLogPage.js';
+import { SttTestPage } from './pages/SttTestPage.js';
 import type { SurveyType } from './types.js';
 
 // ─────────────────────────────────────────────
@@ -81,6 +82,11 @@ async function route(hash: string): Promise<void> {
 
   } else if (hash.startsWith('#/voicelogs')) {
     const p = new VoiceLogPage();
+    p.mount(pageContainer);
+    page = p;
+
+  } else if (hash.startsWith('#/stttest')) {
+    const p = new SttTestPage();
     p.mount(pageContainer);
     page = p;
 

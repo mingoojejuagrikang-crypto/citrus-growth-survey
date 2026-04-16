@@ -29,6 +29,7 @@ const TABS: TabItem[] = [
   { href: '#/survey/growth',  icon: '📏',  label: '비대조사', matchPrefix: '#/survey/growth' },
   { href: '#/survey/quality', icon: '🍊', label: '품질조사', matchPrefix: '#/survey/quality' },
   { href: '#/records',        icon: '📋',  label: '목록',     matchPrefix: '#/records' },
+  { href: '#/stttest',        icon: '🧪',  label: 'STT테스트', matchPrefix: '#/stttest' },
   { href: '#/voicelogs',      icon: '🎙️', label: '로그',     matchPrefix: '#/voicelogs' },
 ];
 

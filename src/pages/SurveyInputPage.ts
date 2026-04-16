@@ -312,11 +312,16 @@ export class SurveyInputPage {
             </div>
           </section>
 
-          <!-- 버튼 영역 -->
-          <div class="save-area" style="display:flex;gap:10px;align-items:center;">
-            <button class="btn btn-voice" id="voice-btn" type="button" style="width:52px;height:52px;border-radius:50%;font-size:22px;flex-shrink:0;background:var(--color-border);border:none;">
-              🎤
+          <!-- 음성 입력 영역 (항상 표시, 기본 입력 수단) -->
+          <div class="voice-primary-area" id="voice-primary-area">
+            <button class="btn-voice-primary" id="voice-btn" type="button">
+              <span class="voice-btn-icon">🎤</span>
+              <span class="voice-btn-label">음성 입력</span>
+              <span class="voice-btn-sub">탭하여 시작</span>
             </button>
+          </div>
+          <!-- 저장 버튼 -->
+          <div class="save-area" style="margin-top:12px;">
             <button class="btn btn-primary btn-full" id="save-btn" type="button" style="height:52px;font-size:18px;">
               저장
             </button>
@@ -983,8 +988,9 @@ export class SurveyInputPage {
     const hasStt = ('SpeechRecognition' in w) || ('webkitSpeechRecognition' in w);
     if (!hasStt && this.voiceBtnEl) {
       this.voiceBtnEl.disabled = true;
-      this.voiceBtnEl.title = '이 브라우저는 음성 인식을 지원하지 않습니다';
-      this.voiceBtnEl.style.opacity = '0.4';
+      this.voiceBtnEl.classList.add('unsupported');
+      const subEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-sub');
+      if (subEl) subEl.textContent = '이 브라우저는 음성 인식을 지원하지 않습니다';
     }
   }
 
@@ -1181,13 +1187,18 @@ export class SurveyInputPage {
   private updateVoiceBtnUI(active: boolean): void {
     if (!this.voiceBtnEl) return;
     if (active) {
-      this.voiceBtnEl.innerHTML = '🔴';
-      this.voiceBtnEl.style.background = '#ffebee';
-      this.voiceBtnEl.title = '음성 입력 중 (탭하여 중지)';
+      this.voiceBtnEl.classList.add('active');
+      this.voiceBtnEl.classList.remove('unsupported');
+      const iconEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-icon');
+      const subEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-sub');
+      if (iconEl) iconEl.textContent = '🔴';
+      if (subEl) subEl.textContent = '듣는 중... (탭하여 중지)';
     } else {
-      this.voiceBtnEl.innerHTML = '🎤';
-      this.voiceBtnEl.style.background = 'var(--color-border)';
-      this.voiceBtnEl.title = '음성 입력 시작';
+      this.voiceBtnEl.classList.remove('active');
+      const iconEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-icon');
+      const subEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-sub');
+      if (iconEl) iconEl.textContent = '🎤';
+      if (subEl) subEl.textContent = '탭하여 시작';
     }
   }
 

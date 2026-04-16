@@ -44,7 +44,7 @@ const DEFAULT_APP_DEFAULTS: AppDefaults = {
 const SETTING_DEFAULTS: Record<string, unknown> = {
   ttsEnabled: true,
   gemmaEnabled: false,
-  audioRecordEnabled: false,
+  audioRecordEnabled: true,
   voiceLogEnabled: true,
   fieldPresets: [],
   activeGrowthPreset: 'default',
