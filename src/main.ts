@@ -104,12 +104,33 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
+  // 로딩 메시지 업데이트 헬퍼
+  function setLoadingMsg(msg: string): void {
+    const span = document.querySelector('#loading span');
+    if (span) span.textContent = msg;
+  }
+
+  // 타임아웃 래퍼 (5초 내 완료되지 않으면 오류 표시)
+  function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`${label} 타임아웃 (5초 초과)`));
+      }, 5000);
+      promise.then(
+        (v) => { clearTimeout(timer); resolve(v); },
+        (e) => { clearTimeout(timer); reject(e); },
+      );
+    });
+  }
+
   try {
     // 1. IndexedDB 초기화
-    await initDB();
+    setLoadingMsg('DB 초기화 중...');
+    await withTimeout(initDB(), 'IndexedDB 초기화');
 
     // 2. 설정 로드 → SurveyStore 세션 필드 초기화
-    const defaults = await getDefaults();
+    setLoadingMsg('설정 로드 중...');
+    const defaults = await withTimeout(getDefaults(), '설정 로드');
     surveyStore.updateSessionFields({
       farmerName: defaults.defaultFarmerName,
       label: defaults.defaultLabel,
@@ -117,7 +138,8 @@ async function bootstrap(): Promise<void> {
     });
 
     // 3. 미동기화 건수 초기화
-    const pendingCount = await getPendingCount();
+    setLoadingMsg('레코드 확인 중...');
+    const pendingCount = await withTimeout(getPendingCount(), '레코드 확인');
     syncStore.setPendingCount(pendingCount);
 
     // 4. 네트워크 이벤트 등록
