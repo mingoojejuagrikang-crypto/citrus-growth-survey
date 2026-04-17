@@ -206,11 +206,19 @@ export function removeParticles(text: string): string {
   return result;
 }
 
+/** 비정상 대형 숫자로 판단하는 임계값 (9999 초과) */
+const ABNORMAL_NUMBER_THRESHOLD = 9999;
+
+/** 앞 노이즈로 판단하는 최소 자릿수 (5자리 이상) */
+const LEADING_NOISE_MIN_DIGITS = 5;
+
 /**
  * STT 텍스트 전체 정규화 파이프라인.
- * 1. 소수점 표현 정규화 ("점" → ".")
- * 2. 한국어 숫자 → 아라비아 숫자
- * 3. 불필요한 공백 정리
+ * 1. 콤마 포함 숫자 처리 (STT 오인식 천문학적 숫자 정정)
+ * 2. 앞에 붙은 비정상 대형 숫자 노이즈 제거
+ * 3. 소수점 표현 정규화 ("점" → ".")
+ * 4. 한국어 숫자 → 아라비아 숫자
+ * 5. 불필요한 공백 정리
  *
  * @param rawText STT 원본 텍스트
  * @returns 정규화된 텍스트
@@ -220,13 +228,41 @@ export function normalize(rawText: string): string {
 
   let result = rawText.trim().toLowerCase();
 
-  // 1. 소수점 표현 정규화 (한국어 숫자 + 점 패턴 먼저 처리)
+  // 1. 콤마 포함 숫자 처리
+  //    "10,000,000,000,000,199.9" → "199.9" (비정상 대형 → 마지막 유효 소수 추출)
+  //    "1,234" → "1234" (일반 천단위 구분자)
+  result = result.replace(/\d{1,3}(,\d{3})+(\.\d+)?/g, (match) => {
+    const parts = match.split(',');
+    const lastPart = parts.at(-1) ?? match;
+    const middleParts = parts.slice(1, -1);
+
+    // STT 노이즈 패턴 판별: 중간 파트가 모두 "000"이고 마지막 파트가 유효 숫자일 때만 추출
+    // 예: "10,000,000,000,000,199.9" → middle=['000','000','000','000'] → "199.9"
+    // 반면 "10,199.9" → middle=[] (length 0) → 일반 천단위로 처리
+    const looksLikeSttNoise =
+      parts.length >= 3 &&
+      middleParts.length > 0 &&
+      middleParts.every((p) => p === '000') &&
+      /^\d+(?:\.\d+)?$/.test(lastPart) &&
+      parseFloat(lastPart) <= ABNORMAL_NUMBER_THRESHOLD;
+
+    if (looksLikeSttNoise) return lastPart;
+    return match.replace(/,/g, '');
+  });
+
+  // 2. 앞에 붙은 비정상 대형 숫자 노이즈 제거
+  //    예: "1000000000004 나무 오" → "나무 오"
+  //    (5자리 이상 단독 숫자가 문장 맨 앞에 있으면 제거)
+  const leadingNoisePattern = new RegExp(`^\\d{${LEADING_NOISE_MIN_DIGITS},}\\s+`);
+  result = result.replace(leadingNoisePattern, '');
+
+  // 3. 소수점 표현 정규화 (한국어 숫자 + 점 패턴 먼저 처리)
   result = normalizeDecimal(result);
 
-  // 2. 남은 한국어 숫자를 아라비아 숫자로 변환
+  // 4. 남은 한국어 숫자를 아라비아 숫자로 변환
   result = koreanToNumber(result);
 
-  // 3. 연속 공백 정리
+  // 5. 연속 공백 정리
   result = result.replace(/\s+/g, ' ').trim();
 
   return result;
