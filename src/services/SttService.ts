@@ -31,6 +31,7 @@ interface SpeechRecognitionInstance extends EventTarget {
   onresult: ((event: any) => void) | null;
   onend: (() => void) | null;
   onerror: ((event: any) => void) | null;
+  onspeechstart: (() => void) | null;
   start(): void;
   stop(): void;
   abort(): void;
@@ -106,6 +107,9 @@ export class SttService {
   /** 에러 메시지 콜백 */
   onError: ((msg: string) => void) | null = null;
 
+  /** 발화 시작(speechstart) 콜백 */
+  onSpeechStart: (() => void) | null = null;
+
   // ── 내부 상태 ──
 
   private _isRunning = false;
@@ -128,6 +132,11 @@ export class SttService {
   /** 현재 STT 루프가 실행 중이면 true */
   get isRunning(): boolean {
     return this._isRunning;
+  }
+
+  /** 캐시된 마이크 스트림 (MediaRecorder 재사용용) */
+  get stream(): MediaStream | null {
+    return this._cachedStream;
   }
 
   // ── 공개 메서드 ──
@@ -240,6 +249,10 @@ export class SttService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (event: any) => {
       this._handleResult(event);
+    };
+
+    rec.onspeechstart = () => {
+      this.onSpeechStart?.();
     };
 
     rec.onend = () => {

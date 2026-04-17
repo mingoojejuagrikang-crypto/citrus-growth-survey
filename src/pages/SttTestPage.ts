@@ -14,9 +14,10 @@
 
 import { SttService } from '../services/SttService.js';
 import { TtsService } from '../services/TtsService.js';
+import { MediaRecorderService } from '../services/MediaRecorderService.js';
 import * as VoiceLogService from '../services/VoiceLogService.js';
 import { parse } from '../parser/parser.js';
-import type { SttResultEvent, VoiceLog, ParseResult } from '../types.js';
+import type { SttResultEvent, VoiceLog, ParseResult, AudioBlob } from '../types.js';
 import { nowIso } from '../utils/dateUtils.js';
 
 // ─────────────────────────────────────────────
@@ -44,6 +45,7 @@ export class SttTestPage {
   private el: HTMLElement | null = null;
   private sttService: SttService | null = null;
   private ttsService: TtsService | null = null;
+  private mediaRecorderService: MediaRecorderService | null = null;
   private isVoiceActive = false;
   private voiceBtnEl: HTMLButtonElement | null = null;
   private lastField: string | null = null;
@@ -64,6 +66,10 @@ export class SttTestPage {
     this.sttService = null;
     this.ttsService?.cancel();
     this.ttsService = null;
+    if (this.mediaRecorderService?.isRecording) {
+      this.mediaRecorderService.stopRecording().catch(() => {});
+    }
+    this.mediaRecorderService = null;
     this.voiceBtnEl = null;
     this.isVoiceActive = false;
 
@@ -177,6 +183,14 @@ export class SttTestPage {
     // 중간 인식 결과 표시
     this.sttService.onInterim = (text: string) => {
       this.updateInterimText(text);
+
+      // iOS fallback: onspeechstart가 발화하지 않은 경우 첫 interim에서 녹음 시작
+      if (this.mediaRecorderService && !this.mediaRecorderService.isRecording) {
+        const stream = this.sttService?.stream;
+        if (stream) {
+          this.mediaRecorderService.startRecording(stream);
+        }
+      }
     };
 
     // 최종 인식 결과 처리
@@ -196,6 +210,17 @@ export class SttTestPage {
       this.updateInterimText(`오류: ${msg}`);
     };
 
+    // 오디오 녹음 서비스 (SttTestPage는 항상 녹음 시도)
+    if (MediaRecorderService.isSupported()) {
+      this.mediaRecorderService = new MediaRecorderService();
+      this.sttService.onSpeechStart = () => {
+        const stream = this.sttService?.stream;
+        if (stream && this.mediaRecorderService && !this.mediaRecorderService.isRecording) {
+          this.mediaRecorderService.startRecording(stream);
+        }
+      };
+    }
+
     // STT 미지원 브라우저 처리
     const w = window as unknown as Record<string, unknown>;
     const hasStt = ('SpeechRecognition' in w) || ('webkitSpeechRecognition' in w);
@@ -212,6 +237,9 @@ export class SttTestPage {
   private handleToggleVoice(): void {
     if (!this.sttService) return;
     if (this.isVoiceActive) {
+      if (this.mediaRecorderService?.isRecording) {
+        this.mediaRecorderService.stopRecording().catch(() => {/* 유실 무시 */});
+      }
       this.sttService.stop();
       this.isVoiceActive = false;
       this.updateVoiceBtnUI(false);
@@ -257,27 +285,47 @@ export class SttTestPage {
 
     // 로그 저장 (테스트 페이지에서도 항상 저장)
     const kind = result.field && result.score >= 0.5 ? 'ok' : 'fail';
-    VoiceLogService.saveLog({
-      ts: nowIso(),
-      kind,
-      rawText,
-      alternatives: event.alternatives,
-      parse: result.field !== null ? {
-        field: result.field,
-        value: result.value,
-        score: result.score,
-        method: result.method,
-      } : null,
-      status: kind === 'ok' ? 'accepted' : 'rejected',
-      message: result.field ? `${FIELD_LABEL_MAP[result.field] ?? result.field} ${result.value ?? ''}` : '다시 말씀해 주세요',
-      audioFileId: null,
-      session: 'stt-test',
-    }).then(() => {
-      // 저장 완료 후 로그 목록 갱신
+    const mrs = this.mediaRecorderService;
+    const audioPromise: Promise<AudioBlob | null> =
+      mrs?.isRecording ? mrs.stopRecording().catch((e) => { console.warn('[MediaRecorder] stopRecording 실패:', e); return null; }) : Promise.resolve(null);
+
+    (async () => {
+      try {
+        const logId = await VoiceLogService.saveLog({
+          ts: nowIso(),
+          kind,
+          rawText,
+          alternatives: event.alternatives,
+          parse: result.field !== null ? {
+            field: result.field,
+            value: result.value,
+            score: result.score,
+            method: result.method,
+          } : null,
+          status: kind === 'ok' ? 'accepted' : 'rejected',
+          message: result.field
+            ? `${FIELD_LABEL_MAP[result.field] ?? result.field} ${result.value ?? ''}`
+            : '다시 말씀해 주세요',
+          audioFileId: null,
+          session: 'stt-test',
+        });
+
+        const audioBlob = await audioPromise;
+        if (audioBlob) {
+          const audioId = await VoiceLogService.saveAudio({
+            logId,
+            blob: audioBlob.blob,
+            mimeType: audioBlob.mimeType,
+            durationMs: audioBlob.durationMs,
+            ts: nowIso(),
+          });
+          await VoiceLogService.updateLogAudioId(logId, audioId);
+        }
+      } catch {
+        // 무시
+      }
       this.loadAndRenderLogs();
-    }).catch(() => {
-      // 로그 저장 실패는 무시
-    });
+    })();
   }
 
   // ── 파서 결과 렌더링 ──

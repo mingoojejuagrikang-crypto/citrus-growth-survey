@@ -169,6 +169,9 @@ export class SurveyInputPage {
       this.ttsService.cancel();
       this.ttsService = null;
     }
+    if (this.mediaRecorderService?.isRecording) {
+      this.mediaRecorderService.stopRecording().catch(() => {});
+    }
     this.mediaRecorderService = null;
     this.voiceBtnEl = null;
     this.isVoiceActive = false;
@@ -954,6 +957,14 @@ export class SurveyInputPage {
 
     this.sttService.onInterim = (text: string) => {
       voiceStore.setInterimText(text);
+
+      // iOS fallback: onspeechstart가 발화하지 않은 경우 첫 interim에서 녹음 시작
+      if (this.audioRecordEnabled && this.mediaRecorderService && !this.mediaRecorderService.isRecording) {
+        const stream = this.sttService?.stream;
+        if (stream) {
+          this.mediaRecorderService.startRecording(stream);
+        }
+      }
     };
 
     this.sttService.onStateChange = (state) => {
@@ -979,8 +990,15 @@ export class SurveyInputPage {
     };
 
     // 오디오 녹음 서비스 (선택적)
-    if (this.audioRecordEnabled) {
+    if (this.audioRecordEnabled && MediaRecorderService.isSupported()) {
       this.mediaRecorderService = new MediaRecorderService();
+
+      this.sttService.onSpeechStart = () => {
+        const stream = this.sttService?.stream;
+        if (stream && this.mediaRecorderService && !this.mediaRecorderService.isRecording) {
+          this.mediaRecorderService.startRecording(stream);
+        }
+      };
     }
 
     // STT 미지원 브라우저에서 음성 버튼 비활성화
@@ -1062,24 +1080,49 @@ export class SurveyInputPage {
 
       // 음성 로그 저장 (실패해도 계속)
       if (this.voiceLogEnabled) {
-        VoiceLogService.saveLog({
-          ts: now,
-          kind: 'ok',
-          rawText: event.transcript,
-          alternatives: event.alternatives,
-          parse: {
-            field: result.field,
-            value: result.value,
-            score: result.score,
-            method: result.method,
-          },
-          status: 'accepted',
-          message: ttsText,
-          audioFileId: null,
-          session: storeState.sessionFields
-            ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
-            : undefined,
-        }).catch(() => {/* 로그 저장 실패 무시 */});
+        const mrs = this.mediaRecorderService;
+        const isRecording = mrs?.isRecording ?? false;
+        const audioPromise: Promise<import('../types.js').AudioBlob | null> =
+          this.audioRecordEnabled && isRecording && mrs
+            ? mrs.stopRecording().catch((e) => { console.warn('[MediaRecorder] stopRecording 실패:', e); return null; })
+            : Promise.resolve(null);
+
+        (async () => {
+          try {
+            const logId = await VoiceLogService.saveLog({
+              ts: now,
+              kind: 'ok',
+              rawText: event.transcript,
+              alternatives: event.alternatives,
+              parse: {
+                field: result.field,
+                value: result.value,
+                score: result.score,
+                method: result.method,
+              },
+              status: 'accepted',
+              message: ttsText,
+              audioFileId: null,
+              session: storeState.sessionFields
+                ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
+                : undefined,
+            });
+
+            const audioBlob = await audioPromise;
+            if (audioBlob) {
+              const audioId = await VoiceLogService.saveAudio({
+                logId,
+                blob: audioBlob.blob,
+                mimeType: audioBlob.mimeType,
+                durationMs: audioBlob.durationMs,
+                ts: now,
+              });
+              await VoiceLogService.updateLogAudioId(logId, audioId);
+            }
+          } catch {
+            // 로그/오디오 저장 실패 무시
+          }
+        })();
       }
       return;
     }
@@ -1109,24 +1152,49 @@ export class SurveyInputPage {
       setTimeout(() => voiceStore.clearPending(), 2000);
 
       if (this.voiceLogEnabled) {
-        VoiceLogService.saveLog({
-          ts: now,
-          kind: 'ok',
-          rawText: event.transcript,
-          alternatives: event.alternatives,
-          parse: {
-            field: result.field,
-            value: result.value,
-            score: result.score,
-            method: result.method,
-          },
-          status: 'corrected',
-          message: ttsText,
-          audioFileId: null,
-          session: storeState.sessionFields
-            ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
-            : undefined,
-        }).catch(() => {/* 로그 저장 실패 무시 */});
+        const mrs = this.mediaRecorderService;
+        const isRecording = mrs?.isRecording ?? false;
+        const audioPromise: Promise<import('../types.js').AudioBlob | null> =
+          this.audioRecordEnabled && isRecording && mrs
+            ? mrs.stopRecording().catch((e) => { console.warn('[MediaRecorder] stopRecording 실패:', e); return null; })
+            : Promise.resolve(null);
+
+        (async () => {
+          try {
+            const logId = await VoiceLogService.saveLog({
+              ts: now,
+              kind: 'ok',
+              rawText: event.transcript,
+              alternatives: event.alternatives,
+              parse: {
+                field: result.field,
+                value: result.value,
+                score: result.score,
+                method: result.method,
+              },
+              status: 'corrected',
+              message: ttsText,
+              audioFileId: null,
+              session: storeState.sessionFields
+                ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
+                : undefined,
+            });
+
+            const audioBlob = await audioPromise;
+            if (audioBlob) {
+              const audioId = await VoiceLogService.saveAudio({
+                logId,
+                blob: audioBlob.blob,
+                mimeType: audioBlob.mimeType,
+                durationMs: audioBlob.durationMs,
+                ts: now,
+              });
+              await VoiceLogService.updateLogAudioId(logId, audioId);
+            }
+          } catch {
+            // 로그/오디오 저장 실패 무시
+          }
+        })();
       }
       return;
     }
@@ -1140,24 +1208,49 @@ export class SurveyInputPage {
     voiceStore.setError('인식 실패');
 
     if (this.voiceLogEnabled) {
-      VoiceLogService.saveLog({
-        ts: now,
-        kind: 'fail',
-        rawText: event.transcript,
-        alternatives: event.alternatives,
-        parse: {
-          field: result.field,
-          value: result.value,
-          score: result.score,
-          method: result.method,
-        },
-        status: 'rejected',
-        message: failTts,
-        audioFileId: null,
-        session: storeState.sessionFields
-          ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
-          : undefined,
-      }).catch(() => {/* 로그 저장 실패 무시 */});
+      const mrs = this.mediaRecorderService;
+      const isRecording = mrs?.isRecording ?? false;
+      const audioPromise: Promise<import('../types.js').AudioBlob | null> =
+        this.audioRecordEnabled && isRecording && mrs
+          ? mrs.stopRecording().catch(() => null)
+          : Promise.resolve(null);
+
+      (async () => {
+        try {
+          const logId = await VoiceLogService.saveLog({
+            ts: now,
+            kind: 'fail',
+            rawText: event.transcript,
+            alternatives: event.alternatives,
+            parse: {
+              field: result.field,
+              value: result.value,
+              score: result.score,
+              method: result.method,
+            },
+            status: 'rejected',
+            message: failTts,
+            audioFileId: null,
+            session: storeState.sessionFields
+              ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
+              : undefined,
+          });
+
+          const audioBlob = await audioPromise;
+          if (audioBlob) {
+            const audioId = await VoiceLogService.saveAudio({
+              logId,
+              blob: audioBlob.blob,
+              mimeType: audioBlob.mimeType,
+              durationMs: audioBlob.durationMs,
+              ts: now,
+            });
+            await VoiceLogService.updateLogAudioId(logId, audioId);
+          }
+        } catch {
+          // 로그/오디오 저장 실패 무시
+        }
+      })();
     }
   }
 
@@ -1167,6 +1260,9 @@ export class SurveyInputPage {
   private toggleVoice(): void {
     if (!this.sttService) return;
     if (this.isVoiceActive) {
+      if (this.mediaRecorderService?.isRecording) {
+        this.mediaRecorderService.stopRecording().catch(() => {/* 유실 무시 */});
+      }
       this.sttService.stop();
       this.isVoiceActive = false;
       this.updateVoiceBtnUI(false);

@@ -69,6 +69,40 @@ export async function saveAudio(audio: Omit<VoiceAudio, 'id'>): Promise<string> 
   }
 }
 
+/**
+ * 로그의 audioFileId를 업데이트합니다.
+ * saveLog() 후 오디오 저장이 완료됐을 때 호출합니다.
+ * 업데이트 실패 시 orphan voiceAudio 방지를 위해 저장된 오디오를 롤백 삭제합니다.
+ *
+ * @param logId 업데이트할 voiceLogs.id
+ * @param audioId 연결할 voiceAudio.id
+ * @returns Promise<void>
+ * @throws Error 업데이트 실패 시 (롤백 시도 후)
+ */
+export async function updateLogAudioId(logId: string, audioId: string): Promise<void> {
+  try {
+    const db = await getDB();
+    const log = await db.get('voiceLogs', logId);
+    if (!log) {
+      // 로그가 없으면 고아 오디오 삭제
+      await db.delete('voiceAudio', audioId).catch(() => {});
+      return;
+    }
+    await db.put('voiceLogs', { ...log, audioFileId: audioId });
+  } catch (err) {
+    // 업데이트 실패 시 orphan 방지를 위해 오디오 삭제 시도
+    try {
+      const db = await getDB();
+      await db.delete('voiceAudio', audioId);
+    } catch {
+      // 삭제도 실패하면 포기
+    }
+    throw new Error(
+      `audioFileId 업데이트 실패 (logId=${logId}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 // ─────────────────────────────────────────────
 // 로그 조회
 // ─────────────────────────────────────────────
