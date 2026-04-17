@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 모바일 최적화: user-scalable=no, maximum-scale=1 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- PWA theme-color -->
+    <meta name="theme-color" content="#2e7d32" />
+    <meta name="description" content="감귤 생육 데이터 현장 입력 PWA. 오프라인 저장 및 Google Sheets 자동 동기화." />
+    <!-- iOS PWA -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="감귤조사" />
+    <!-- 파비콘 및 터치 아이콘 -->
+    <link rel="icon" type="image/x-icon" href="./favicon.ico" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <!-- PWA manifest (vite-plugin-pwa가 manifest.webmanifest를 자동 주입) -->
+    <title>감귤 생육조사</title>
+    <script type="module" crossorigin src="./assets/index-DvY-6a7n.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-B4wtbztW.css">
+  <link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
+  <body>
+    <div id="app">
+      <!-- 초기 로딩 화면 (JS 로드 전 표시) -->
+      <div id="loading" style="
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-family: -apple-system, 'Apple SD Gothic Neo', sans-serif;
+        color: #2e7d32;
+        gap: 16px;
+        background: #fafafa;
+      ">
+        <div style="
+          width: 24px;
+          height: 24px;
+          border: 3px solid #e0e0e0;
+          border-top-color: #2e7d32;
+          border-radius: 50%;
+          animation: spin 0.7s linear infinite;
+        "></div>
+        <span style="font-size: 16px;">초기화 중...</span>
+        <style>
+          @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+      </div>
+    </div>
+  </body>
+</html>
