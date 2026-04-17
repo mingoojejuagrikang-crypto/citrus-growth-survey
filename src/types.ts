@@ -129,8 +129,12 @@ export interface TimingInfo {
 export interface DeviceInfo {
   userAgent: string;
   platform: string;
+  language: string;       // navigator.language
   isIOS: boolean;
   isAndroid: boolean;
+  screenWidth: number;    // screen.width
+  screenHeight: number;   // screen.height
+  pixelRatio: number;     // window.devicePixelRatio
 }
 
 // ─────────────────────────────────────────────

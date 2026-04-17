@@ -100,3 +100,23 @@ export function getDeviceInfo(): {
     isAndroid: isAndroid(),
   };
 }
+
+/**
+ * 현재 디바이스 정보를 수집합니다.
+ * VoiceLog.device 필드 저장에 사용합니다.
+ *
+ * @returns DeviceInfo 객체 (language, screenWidth, screenHeight, pixelRatio 포함)
+ */
+export function collectDeviceInfo(): import('../types.js').DeviceInfo {
+  const ua = navigator.userAgent;
+  return {
+    userAgent: ua,
+    platform: navigator.platform ?? '',
+    language: navigator.language ?? '',
+    isIOS: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+    isAndroid: /Android/.test(ua),
+    screenWidth: screen.width,
+    screenHeight: screen.height,
+    pixelRatio: window.devicePixelRatio ?? 1,
+  };
+}

@@ -19,6 +19,7 @@ import * as VoiceLogService from '../services/VoiceLogService.js';
 import { parse } from '../parser/parser.js';
 import type { SttResultEvent, VoiceLog, ParseResult, AudioBlob } from '../types.js';
 import { nowIso } from '../utils/dateUtils.js';
+import { collectDeviceInfo } from '../utils/deviceDetect.js';
 
 // ─────────────────────────────────────────────
 // 상수
@@ -238,16 +239,21 @@ export class SttTestPage {
     if (!this.sttService) return;
     if (this.isVoiceActive) {
       if (this.mediaRecorderService?.isRecording) {
-        this.mediaRecorderService.stopRecording().catch(() => {/* 유실 무시 */});
+        this.mediaRecorderService.stopRecording().catch((e) => {
+          console.warn('[MediaRecorder] stopRecording 실패:', e);
+        });
       }
       this.sttService.stop();
       this.isVoiceActive = false;
       this.updateVoiceBtnUI(false);
       this.updateInterimText('');
+      this.ttsService?.speak('음성 입력 종료');
     } else {
+      this.ttsService?.unlock();
       this.sttService.start();
       this.isVoiceActive = true;
       this.updateVoiceBtnUI(true);
+      this.ttsService?.speak('음성 입력 시작');
     }
   }
 
@@ -308,6 +314,7 @@ export class SttTestPage {
             : '다시 말씀해 주세요',
           audioFileId: null,
           session: 'stt-test',
+          device: collectDeviceInfo(),
         });
 
         const audioBlob = await audioPromise;

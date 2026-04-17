@@ -35,6 +35,7 @@ import { validateRecord, validateField } from '../utils/validation.js';
 import { makeRecordId, makeSessionKey } from '../utils/recordKey.js';
 import { showToast } from '../utils/toast.js';
 import { todayString, formatDisplayDate, nowIso } from '../utils/dateUtils.js';
+import { collectDeviceInfo } from '../utils/deviceDetect.js';
 
 // ─────────────────────────────────────────────
 // 필드 정의 (비대조사 / 품질조사)
@@ -1106,6 +1107,7 @@ export class SurveyInputPage {
               session: storeState.sessionFields
                 ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
                 : undefined,
+              device: collectDeviceInfo(),
             });
 
             const audioBlob = await audioPromise;
@@ -1178,6 +1180,7 @@ export class SurveyInputPage {
               session: storeState.sessionFields
                 ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
                 : undefined,
+              device: collectDeviceInfo(),
             });
 
             const audioBlob = await audioPromise;
@@ -1234,6 +1237,7 @@ export class SurveyInputPage {
             session: storeState.sessionFields
               ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
               : undefined,
+            device: collectDeviceInfo(),
           });
 
           const audioBlob = await audioPromise;
@@ -1268,6 +1272,7 @@ export class SurveyInputPage {
       this.updateVoiceBtnUI(false);
       if (this.ttsEnabled) this.ttsService?.speak('음성 입력 종료');
     } else {
+      this.ttsService?.unlock();
       this.sttService.start();
       this.isVoiceActive = true;
       this.updateVoiceBtnUI(true);

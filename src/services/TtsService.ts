@@ -62,6 +62,7 @@ export class TtsService {
   // ── 내부 상태 ──
 
   private _isSpeaking = false;
+  private _isUnlocked = false;
   private readonly _isSupported: boolean;
   private readonly _isIOS: boolean;
 
@@ -83,6 +84,24 @@ export class TtsService {
   }
 
   // ── 공개 메서드 ──
+
+  /**
+   * 사용자 제스처 핸들러 내에서 동기적으로 오디오 컨텍스트를 언락합니다.
+   * iOS에서 첫 speak()가 setTimeout 내부에서 실행되면 무음 처리되므로
+   * 탭 이벤트 직후 이 메서드를 먼저 호출해야 합니다.
+   */
+  unlock(): void {
+    if (!this._isSupported || this._isUnlocked) return;
+    try {
+      const utt = new SpeechSynthesisUtterance('');
+      utt.volume = 0;
+      window.speechSynthesis.speak(utt);
+      window.speechSynthesis.cancel();
+      this._isUnlocked = true;
+    } catch {
+      // 무시
+    }
+  }
 
   /**
    * 텍스트를 음성으로 출력합니다.
