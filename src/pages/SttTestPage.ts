@@ -33,8 +33,18 @@ const MAX_LOG_DISPLAY = 20;
 
 /** 필드 → 한국어 라벨 매핑 */
 const FIELD_LABEL_MAP: Record<string, string> = {
+  treeNo: '나무번호',
+  fruitNo: '과실번호',
   width: '횡경',
   height: '종경',
+  fruitWeight: '과중',
+  pericarpWeight: '과피중',
+  pericarpThickness: '과피두께',
+  brix: '당도',
+  titratableAcidity: '적정산도',
+  acidContent: '산함량',
+  coloring: '착색',
+  nonDestructive: '비파괴',
   remark: '비고',
 };
 
@@ -270,7 +280,7 @@ export class SttTestPage {
       lastField: this.lastField,
       surveyType: 'growth',
       activeFields: ACTIVE_FIELDS,
-    });
+    }, event.alternatives ?? []);
 
     // lastField 업데이트 (값만 발화 수정 모드를 위해)
     if (result.field) {

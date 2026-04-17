@@ -111,7 +111,7 @@ export interface VoiceParseResult {
   field: string | null;         // 인식된 항목명 (정규화 후)
   value: string | null;         // 인식된 값 (원본 보존)
   score: number;                // 신뢰도 0.0~1.0
-  method: 'alias' | 'exact' | 'normalized' | 'value-only' | 'unknown';
+  method: 'alias' | 'exact' | 'normalized' | 'value-only' | 'unknown' | 'alt-fallback';
 }
 
 /**
@@ -198,7 +198,7 @@ export interface ParseResult {
   value: string | null;               // 인식된 값 (원본 문자열)
   numericValue: number | null;        // 숫자 변환된 값 (숫자 필드인 경우)
   score: number;                      // 신뢰도 0.0~1.0
-  method: 'alias' | 'exact' | 'normalized' | 'value-only' | 'unknown';
+  method: 'alias' | 'exact' | 'normalized' | 'value-only' | 'unknown' | 'alt-fallback';
   isCorrection: boolean;              // 값만 발화한 수정 모드
   warning: string | null;             // 9999 초과 등 경고 메시지
 }

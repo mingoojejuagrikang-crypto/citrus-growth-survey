@@ -1033,6 +1033,8 @@ export class SurveyInputPage {
 
     // 필드명 → TTS 텍스트 매핑
     const fieldLabelMap: Record<string, string> = {
+      treeNo: '나무번호',
+      fruitNo: '과실번호',
       width: '횡경',
       height: '종경',
       fruitWeight: '과중',
@@ -1051,7 +1053,7 @@ export class SurveyInputPage {
       lastField: storeState.lastField,
       surveyType: this.surveyType,
       activeFields: activeFieldKeys,
-    });
+    }, event.alternatives ?? []);
 
     const now = new Date().toISOString();
 

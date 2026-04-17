@@ -29,6 +29,7 @@ const OVERFLOW_THRESHOLD = 9999;
 /** alias 매칭 시 점수 */
 const SCORE_EXACT = 1.0;
 const SCORE_ALIAS = 0.9;
+const SCORE_ALT_FALLBACK = 0.8;
 const SCORE_NORMALIZED = 0.7;
 const SCORE_VALUE_ONLY = 0.5;
 const SCORE_UNKNOWN = 0.0;
@@ -127,7 +128,7 @@ function matchFieldFromTokens(
  * @param context 파서 컨텍스트 (lastField, surveyType, activeFields)
  * @returns ParseResult
  */
-export function parse(rawText: string, context: ParserContext): ParseResult {
+export function parse(rawText: string, context: ParserContext, alternatives: string[] = []): ParseResult {
   const { lastField } = context;
 
   // 1. 정규화
@@ -172,6 +173,32 @@ export function parse(rawText: string, context: ParserContext): ParseResult {
   const match = matchFieldFromTokens(tokens);
 
   if (match === null) {
+    // alternatives fallback (PI-003): rawText 매칭 실패 시 상위 3개 alternatives로 재시도
+    for (const alt of alternatives.slice(0, 3)) {
+      if (alt === rawText) continue;
+      const altNorm = normalize(alt);
+      if (!altNorm) continue;
+      const { fieldPart: altFP, valuePart: altVP } = splitFieldAndValue(altNorm);
+      const altTokens = altFP.split(/\s+/).filter((t) => t.length > 0);
+      const altMatch = matchFieldFromTokens(altTokens);
+      if (altMatch !== null) {
+        const valueStr = altVP !== '' ? altVP : extractNumber(altNorm);
+        const numericValue = valueStr !== null ? parseFloat(valueStr) : null;
+        const warning = numericValue !== null && numericValue > OVERFLOW_THRESHOLD
+          ? `인식된 값 ${numericValue}이 ${OVERFLOW_THRESHOLD}을 초과합니다.`
+          : null;
+        return {
+          field: altMatch.fieldKey,
+          value: valueStr,
+          numericValue,
+          score: SCORE_ALT_FALLBACK,
+          method: 'alt-fallback',
+          isCorrection: false,
+          warning,
+        };
+      }
+    }
+
     // 매칭 실패 — 텍스트 전체에서 숫자 추출 시도
     const numStr = extractNumber(normalized);
     const numValue = numStr !== null ? parseFloat(numStr) : null;
