@@ -274,6 +274,11 @@ export class SettingsPage {
           </button>
         </div>
 
+        <!-- 앱 버전 (F020) -->
+        <div style="text-align:center;padding:16px 0 8px;color:var(--color-text-secondary);font-size:var(--font-size-sm);">
+          앱 버전: v${__APP_VERSION__}
+        </div>
+
       </div>
     `;
 
