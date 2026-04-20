@@ -973,6 +973,11 @@ export class SurveyInputPage {
     };
 
     this.sttService.onError = (msg: string) => {
+      if (msg === 'ios-standalone') {
+        // iOS 홈화면 PWA에서 STT 불가 — 버튼 비활성화 및 경고 표시
+        this.showIOSStandaloneWarning();
+        return;
+      }
       voiceStore.setError(msg);
       // STT 오류 시 버튼 UI도 비활성 상태로 복원
       this.isVoiceActive = false;
@@ -1002,6 +1007,12 @@ export class SurveyInputPage {
       };
     }
 
+    // iOS 홈화면 PWA(standalone 모드) 선제 체크 — STT 불가 경고 표시
+    if (this.sttService.isIOSStandaloneMode) {
+      this.showIOSStandaloneWarning();
+      return;
+    }
+
     // STT 미지원 브라우저에서 음성 버튼 비활성화
     const w = window as unknown as Record<string, unknown>;
     const hasStt = ('SpeechRecognition' in w) || ('webkitSpeechRecognition' in w);
@@ -1010,6 +1021,27 @@ export class SurveyInputPage {
       this.voiceBtnEl.classList.add('unsupported');
       const subEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-sub');
       if (subEl) subEl.textContent = '이 브라우저는 음성 인식을 지원하지 않습니다';
+    }
+  }
+
+  /**
+   * iOS 홈화면 PWA(standalone 모드)에서 STT 불가 경고를 표시합니다.
+   * 음성 버튼을 비활성화하고 경고 메시지를 버튼 하단에 표시합니다.
+   *
+   * 원인: WebKit 버그 225298 — iOS standalone 모드에서 SpeechRecognition 미동작
+   */
+  private showIOSStandaloneWarning(): void {
+    this.isVoiceActive = false;
+    if (this.voiceBtnEl) {
+      this.voiceBtnEl.disabled = true;
+      this.voiceBtnEl.classList.remove('active');
+      this.voiceBtnEl.classList.add('unsupported');
+      const iconEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-icon');
+      const labelEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-label');
+      const subEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-sub');
+      if (iconEl) iconEl.textContent = '🚫';
+      if (labelEl) labelEl.textContent = '음성 입력 사용 불가';
+      if (subEl) subEl.textContent = 'iOS 홈화면 앱에서는 음성 입력이 지원되지 않습니다. Safari 브라우저에서 직접 열어 사용하세요.';
     }
   }
 
@@ -1033,8 +1065,8 @@ export class SurveyInputPage {
 
     // 필드명 → TTS 텍스트 매핑
     const fieldLabelMap: Record<string, string> = {
-      treeNo: '나무번호',
-      fruitNo: '과실번호',
+      treeNo: '조사나무',
+      fruitNo: '조사과실',
       width: '횡경',
       height: '종경',
       fruitWeight: '과중',

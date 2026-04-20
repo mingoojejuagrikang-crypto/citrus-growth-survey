@@ -33,8 +33,8 @@ const MAX_LOG_DISPLAY = 20;
 
 /** 필드 → 한국어 라벨 매핑 */
 const FIELD_LABEL_MAP: Record<string, string> = {
-  treeNo: '나무번호',
-  fruitNo: '과실번호',
+  treeNo: '조사나무',
+  fruitNo: '조사과실',
   width: '횡경',
   height: '종경',
   fruitWeight: '과중',
