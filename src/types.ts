@@ -391,6 +391,32 @@ export interface ParserContext {
 }
 
 // ─────────────────────────────────────────────
+// 필드 데이터 타입 (F019)
+// ─────────────────────────────────────────────
+
+/** 필드별 데이터 타입 정의 (엑셀 "25 노지감귤 생육데이터 통합.xlsx" 기반) */
+export type FieldDataType =
+  | { type: 'integer' }
+  | { type: 'decimal'; places: 1 | 2 }
+  | { type: 'text' };
+
+export const FIELD_DATA_TYPES: Readonly<Record<string, FieldDataType>> = {
+  treeNo:            { type: 'integer' },
+  fruitNo:           { type: 'integer' },
+  width:             { type: 'decimal', places: 1 },
+  height:            { type: 'decimal', places: 1 },
+  fruitWeight:       { type: 'integer' },
+  pericarpWeight:    { type: 'integer' },
+  pericarpThickness: { type: 'decimal', places: 1 },
+  brix:              { type: 'decimal', places: 1 },
+  titratableAcidity: { type: 'decimal', places: 2 },
+  acidContent:       { type: 'decimal', places: 2 },
+  coloring:          { type: 'integer' },
+  nonDestructive:    { type: 'decimal', places: 1 },
+  remark:            { type: 'text' },
+};
+
+// ─────────────────────────────────────────────
 // 검증 결과
 // ─────────────────────────────────────────────
 

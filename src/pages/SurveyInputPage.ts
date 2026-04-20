@@ -36,6 +36,7 @@ import { makeRecordId, makeSessionKey } from '../utils/recordKey.js';
 import { showToast } from '../utils/toast.js';
 import { todayString, formatDisplayDate, nowIso } from '../utils/dateUtils.js';
 import { collectDeviceInfo } from '../utils/deviceDetect.js';
+import { formatFieldValue } from '../utils/formatFieldValue.js';
 
 // ─────────────────────────────────────────────
 // 필드 정의 (비대조사 / 품질조사)
@@ -1063,16 +1064,21 @@ export class SurveyInputPage {
       const storeValue = result.numericValue !== null ? result.numericValue : (result.value ?? '');
       surveyStore.updateField(fieldKey, storeValue);
 
+      // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)
+      const displayValue = result.numericValue !== null
+        ? formatFieldValue(fieldKey, result.numericValue)
+        : (result.value ?? '');
+
       // DOM input 갱신
       const inputEl = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${fieldKey}"]`);
       if (inputEl) {
-        inputEl.value = result.value ?? '';
-        this.fieldValues[fieldKey] = result.value ?? '';
+        inputEl.value = displayValue;
+        this.fieldValues[fieldKey] = displayValue;
         this.updateWarningBadge(fieldKey, inputEl);
       }
 
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
-      const ttsText = `${fieldLabel} ${result.value ?? ''}`;
+      const ttsText = `${fieldLabel} ${displayValue}`;
       voiceStore.setEchoText(ttsText);
       if (this.ttsEnabled) {
         this.ttsService?.speak(ttsText);
@@ -1137,16 +1143,21 @@ export class SurveyInputPage {
       const storeValue = result.numericValue !== null ? result.numericValue : (result.value ?? '');
       surveyStore.updateField(fieldKey, storeValue);
 
+      // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)
+      const displayValue = result.numericValue !== null
+        ? formatFieldValue(fieldKey, result.numericValue)
+        : (result.value ?? '');
+
       // DOM input 갱신
       const inputEl = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${fieldKey}"]`);
       if (inputEl) {
-        inputEl.value = result.value ?? '';
-        this.fieldValues[fieldKey] = result.value ?? '';
+        inputEl.value = displayValue;
+        this.fieldValues[fieldKey] = displayValue;
         this.updateWarningBadge(fieldKey, inputEl);
       }
 
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
-      const ttsText = `수정 ${fieldLabel} ${result.value ?? ''}`;
+      const ttsText = `수정 ${fieldLabel} ${displayValue}`;
       voiceStore.setEchoText(ttsText);
       if (this.ttsEnabled) {
         this.ttsService?.speak(ttsText);

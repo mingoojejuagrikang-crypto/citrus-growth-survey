@@ -230,6 +230,11 @@ export function normalize(rawText: string): string {
 
   let result = rawText.trim().toLowerCase();
 
+  // 0. STT 오전사 고정 치환 (알려진 패턴)
+  // "과시리" = STT가 "과실이"(과실+2)를 오전사하는 패턴
+  result = result.replace(/과시리/g, '과실 2');
+  result = result.replace(/과시이/g, '과실 2');
+
   // 1. 콤마 포함 숫자 처리
   //    "10,000,000,000,000,199.9" → "199.9" (비정상 대형 → 마지막 유효 소수 추출)
   //    "1,234" → "1234" (일반 천단위 구분자)
@@ -257,6 +262,22 @@ export function normalize(rawText: string): string {
   //    (5자리 이상 단독 숫자가 문장 맨 앞에 있으면 제거)
   const leadingNoisePattern = new RegExp(`^\\d{${LEADING_NOISE_MIN_DIGITS},}\\s+`);
   result = result.replace(leadingNoisePattern, '');
+
+  // 3-0. 점/쩜 전후 공백 분리 한국어 숫자 토큰 병합
+  // "이백 이십 이 점 이" → "이백이십이점이" → normalizeDecimal이 222.2로 변환
+  const KO_NUM_CHARS = '영일이삼사오육칠팔구십백천';
+  const koNumRun = `[${KO_NUM_CHARS}]+`;
+  result = result.replace(
+    new RegExp(
+      `(${koNumRun}(?:\\s+${koNumRun})*)\\s*[점쩜]\\s*(${koNumRun}(?:\\s+${koNumRun})*)`,
+      'g'
+    ),
+    (_, intPart: string, fracPart: string) => {
+      const intCompact = intPart.replace(/\s+/g, '');
+      const fracCompact = fracPart.replace(/\s+/g, '');
+      return `${intCompact}점${fracCompact}`;
+    }
+  );
 
   // 3. 소수점 표현 정규화 (한국어 숫자 + 점 패턴 먼저 처리)
   result = normalizeDecimal(result);
