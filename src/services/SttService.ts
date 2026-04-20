@@ -69,6 +69,17 @@ function isIOS(): boolean {
 }
 
 /**
+ * iOS 홈화면에 설치된 PWA(standalone 모드)인지 확인합니다.
+ * iOS standalone 모드에서는 SpeechRecognition API가 동작하지 않습니다.
+ * (WebKit 버그 225298)
+ *
+ * @returns iOS standalone 모드이면 true
+ */
+function isIOSStandalone(): boolean {
+  return isIOS() && (window.navigator as unknown as Record<string, unknown>)['standalone'] === true;
+}
+
+/**
  * SpeechRecognition 생성자를 반환합니다.
  * 브라우저 호환성을 위해 표준 및 webkit prefix 모두 시도합니다.
  *
@@ -139,13 +150,30 @@ export class SttService {
     return this._cachedStream;
   }
 
+  /**
+   * iOS 홈화면 PWA(standalone 모드) 여부를 반환합니다.
+   * SurveyInputPage 등에서 페이지 init 시 미리 경고를 표시하는 데 사용됩니다.
+   *
+   * @returns iOS standalone 모드이면 true
+   */
+  get isIOSStandaloneMode(): boolean {
+    return isIOSStandalone();
+  }
+
   // ── 공개 메서드 ──
 
   /**
    * 마이크 권한을 획득하고 항상-ON STT 루프를 시작합니다.
    * 이미 실행 중이면 아무 작업도 하지 않습니다.
+   * iOS 홈화면 PWA(standalone 모드)에서는 SpeechRecognition이 동작하지 않으므로
+   * 즉시 'ios-standalone' 에러 코드를 emitError하고 반환합니다.
    */
   start(): void {
+    if (isIOSStandalone()) {
+      this._emitError('ios-standalone');
+      return;
+    }
+
     if (this._isRunning) return;
 
     const Ctor = getSpeechRecognitionCtor();
@@ -245,6 +273,30 @@ export class SttService {
 
     // iOS는 continuous:false로 설정하여 각 발화 후 재시작 패턴 적용
     rec.continuous = this._isIOS ? false : true;
+
+    // Chrome 139+ on-device path (processLocally)
+    if ('processLocally' in rec) {
+      try { (rec as any).processLocally = true; } catch (_) {} // eslint-disable-line @typescript-eslint/no-explicit-any
+    }
+
+    // Chrome 142+ contextual biasing (감귤 도메인 용어 우선순위 부여)
+    // 구버전 Chrome/Safari에서는 'phrases' in rec 조건이 false → 무해하게 건너뜀
+    const SpeechRecognitionPhrase = (window as any).SpeechRecognitionPhrase; // eslint-disable-line @typescript-eslint/no-explicit-any
+    if ('phrases' in rec && SpeechRecognitionPhrase) {
+      (rec as any).phrases = [ // eslint-disable-line @typescript-eslint/no-explicit-any
+        new SpeechRecognitionPhrase('횡경', 9.0),
+        new SpeechRecognitionPhrase('종경', 9.0),
+        new SpeechRecognitionPhrase('조사나무', 9.0),
+        new SpeechRecognitionPhrase('조사과실', 9.0),
+        new SpeechRecognitionPhrase('과피두께', 8.0),
+        new SpeechRecognitionPhrase('당도', 8.0),
+        new SpeechRecognitionPhrase('산함량', 8.0),
+        new SpeechRecognitionPhrase('과중', 7.0),
+        new SpeechRecognitionPhrase('착색', 7.0),
+        new SpeechRecognitionPhrase('비파괴', 7.0),
+        new SpeechRecognitionPhrase('비고', 6.0),
+      ];
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (event: any) => {
