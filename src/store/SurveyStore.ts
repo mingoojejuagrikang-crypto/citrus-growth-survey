@@ -18,6 +18,7 @@ import type {
   SurveyType,
   ParseResult,
 } from '../types.js';
+import { FIELD_DATA_TYPES } from '../types.js';
 import { todayString } from '../utils/dateUtils.js';
 
 // ─────────────────────────────────────────────
@@ -157,6 +158,12 @@ class SurveyStore extends Observable<SurveyState> {
    * 음성 인식 결과를 적용합니다.
    * isCorrection이면 lastField의 값을 덮어씁니다.
    *
+   * F019 방어 로직: integer 타입 필드(treeNo, fruitNo, fruitWeight,
+   * pericarpWeight, coloring)에 소수값이 들어오면 Math.round()로 반올림하여
+   * 저장합니다. SurveyInputPage 경로 외에서 이 메서드를 호출하더라도
+   * store에 저장되는 값과 표시값(formatFieldValue)이 어긋나지 않도록
+   * 안전망을 제공합니다.
+   *
    * @param result 파서 결과
    */
   applyVoiceResult(result: ParseResult): void {
@@ -164,7 +171,15 @@ class SurveyStore extends Observable<SurveyState> {
     const targetField = result.isCorrection ? state.lastField : result.field;
     if (targetField === null) return;
 
-    const value = result.numericValue !== null ? result.numericValue : result.value;
+    const rawValue =
+      result.numericValue !== null ? result.numericValue : result.value;
+
+    const dataType = FIELD_DATA_TYPES[targetField];
+    const value =
+      dataType?.type === 'integer' && typeof rawValue === 'number'
+        ? Math.round(rawValue)
+        : rawValue;
+
     this.updateField(targetField, value);
   }
 
