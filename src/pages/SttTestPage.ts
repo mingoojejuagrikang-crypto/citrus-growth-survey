@@ -33,8 +33,8 @@ const MAX_LOG_DISPLAY = 20;
 
 /** 필드 → 한국어 라벨 매핑 */
 const FIELD_LABEL_MAP: Record<string, string> = {
-  treeNo: '나무번호',
-  fruitNo: '과실번호',
+  treeNo: '조사나무',
+  fruitNo: '조사과실',
   width: '횡경',
   height: '종경',
   fruitWeight: '과중',
@@ -216,6 +216,18 @@ export class SttTestPage {
 
     // 에러 처리
     this.sttService.onError = (msg: string) => {
+      if (msg === 'ios-standalone') {
+        // iOS 홈화면 PWA에서 STT 불가 — 버튼 비활성화 및 경고 표시
+        this.isVoiceActive = false;
+        this.updateVoiceBtnUI(false);
+        if (this.voiceBtnEl) {
+          this.voiceBtnEl.disabled = true;
+          this.voiceBtnEl.classList.add('unsupported');
+          const subEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-sub');
+          if (subEl) subEl.textContent = 'iOS 홈화면 앱에서는 음성 입력이 지원되지 않습니다. Safari 브라우저에서 직접 열어 사용하세요.';
+        }
+        return;
+      }
       this.isVoiceActive = false;
       this.updateVoiceBtnUI(false);
       this.updateInterimText(`오류: ${msg}`);

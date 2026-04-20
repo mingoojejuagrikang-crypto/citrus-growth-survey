@@ -36,6 +36,8 @@ import { makeRecordId, makeSessionKey } from '../utils/recordKey.js';
 import { showToast } from '../utils/toast.js';
 import { todayString, formatDisplayDate, nowIso } from '../utils/dateUtils.js';
 import { collectDeviceInfo } from '../utils/deviceDetect.js';
+import { formatFieldValue } from '../utils/formatFieldValue.js';
+import { FIELD_DATA_TYPES } from '../types.js';
 
 // ─────────────────────────────────────────────
 // 필드 정의 (비대조사 / 품질조사)
@@ -624,8 +626,12 @@ export class SurveyInputPage {
       const val = record[pendingField];
       const input = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${pendingField}"]`);
       if (input && val != null) {
-        input.value = String(val);
-        this.fieldValues[pendingField] = String(val);
+        // F019: 저장값이 숫자이면 formatFieldValue로 표시 포맷 적용 (예: integer 13, decimal 200.0)
+        const displayValue = typeof val === 'number'
+          ? formatFieldValue(pendingField, val)
+          : String(val);
+        input.value = displayValue;
+        this.fieldValues[pendingField] = displayValue;
       }
     }
   }
@@ -973,6 +979,11 @@ export class SurveyInputPage {
     };
 
     this.sttService.onError = (msg: string) => {
+      if (msg === 'ios-standalone') {
+        // iOS 홈화면 PWA에서 STT 불가 — 버튼 비활성화 및 경고 표시
+        this.showIOSStandaloneWarning();
+        return;
+      }
       voiceStore.setError(msg);
       // STT 오류 시 버튼 UI도 비활성 상태로 복원
       this.isVoiceActive = false;
@@ -1002,6 +1013,12 @@ export class SurveyInputPage {
       };
     }
 
+    // iOS 홈화면 PWA(standalone 모드) 선제 체크 — STT 불가 경고 표시
+    if (this.sttService.isIOSStandaloneMode) {
+      this.showIOSStandaloneWarning();
+      return;
+    }
+
     // STT 미지원 브라우저에서 음성 버튼 비활성화
     const w = window as unknown as Record<string, unknown>;
     const hasStt = ('SpeechRecognition' in w) || ('webkitSpeechRecognition' in w);
@@ -1010,6 +1027,27 @@ export class SurveyInputPage {
       this.voiceBtnEl.classList.add('unsupported');
       const subEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-sub');
       if (subEl) subEl.textContent = '이 브라우저는 음성 인식을 지원하지 않습니다';
+    }
+  }
+
+  /**
+   * iOS 홈화면 PWA(standalone 모드)에서 STT 불가 경고를 표시합니다.
+   * 음성 버튼을 비활성화하고 경고 메시지를 버튼 하단에 표시합니다.
+   *
+   * 원인: WebKit 버그 225298 — iOS standalone 모드에서 SpeechRecognition 미동작
+   */
+  private showIOSStandaloneWarning(): void {
+    this.isVoiceActive = false;
+    if (this.voiceBtnEl) {
+      this.voiceBtnEl.disabled = true;
+      this.voiceBtnEl.classList.remove('active');
+      this.voiceBtnEl.classList.add('unsupported');
+      const iconEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-icon');
+      const labelEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-label');
+      const subEl = this.voiceBtnEl.querySelector<HTMLElement>('.voice-btn-sub');
+      if (iconEl) iconEl.textContent = '🚫';
+      if (labelEl) labelEl.textContent = '음성 입력 사용 불가';
+      if (subEl) subEl.textContent = 'iOS 홈화면 앱에서는 음성 입력이 지원되지 않습니다. Safari 브라우저에서 직접 열어 사용하세요.';
     }
   }
 
@@ -1033,8 +1071,8 @@ export class SurveyInputPage {
 
     // 필드명 → TTS 텍스트 매핑
     const fieldLabelMap: Record<string, string> = {
-      treeNo: '나무번호',
-      fruitNo: '과실번호',
+      treeNo: '조사나무',
+      fruitNo: '조사과실',
       width: '횡경',
       height: '종경',
       fruitWeight: '과중',
@@ -1060,19 +1098,28 @@ export class SurveyInputPage {
     // A. field 있고 score >= 0.5
     if (result.field !== null && result.score >= 0.5 && !result.isCorrection) {
       const fieldKey = result.field;
-      const storeValue = result.numericValue !== null ? result.numericValue : (result.value ?? '');
+      // integer 타입 필드(remark 제외)는 storeValue를 반올림하여 저장값-표시값 일치
+      const dataType = FIELD_DATA_TYPES[fieldKey];
+      const storeValue = (dataType?.type === 'integer' && result.numericValue !== null)
+        ? Math.round(result.numericValue)
+        : (result.numericValue !== null ? result.numericValue : (result.value ?? ''));
       surveyStore.updateField(fieldKey, storeValue);
+
+      // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)
+      const displayValue = result.numericValue !== null
+        ? formatFieldValue(fieldKey, result.numericValue)
+        : (result.value ?? '');
 
       // DOM input 갱신
       const inputEl = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${fieldKey}"]`);
       if (inputEl) {
-        inputEl.value = result.value ?? '';
-        this.fieldValues[fieldKey] = result.value ?? '';
+        inputEl.value = displayValue;
+        this.fieldValues[fieldKey] = displayValue;
         this.updateWarningBadge(fieldKey, inputEl);
       }
 
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
-      const ttsText = `${fieldLabel} ${result.value ?? ''}`;
+      const ttsText = `${fieldLabel} ${displayValue}`;
       voiceStore.setEchoText(ttsText);
       if (this.ttsEnabled) {
         this.ttsService?.speak(ttsText);
@@ -1134,19 +1181,28 @@ export class SurveyInputPage {
     // B. isCorrection: true (값만 발화 — lastField 사용)
     if (result.isCorrection && result.field !== null) {
       const fieldKey = result.field;
-      const storeValue = result.numericValue !== null ? result.numericValue : (result.value ?? '');
+      // integer 타입 필드(remark 제외)는 storeValue를 반올림하여 저장값-표시값 일치
+      const dataTypeB = FIELD_DATA_TYPES[fieldKey];
+      const storeValue = (dataTypeB?.type === 'integer' && result.numericValue !== null)
+        ? Math.round(result.numericValue)
+        : (result.numericValue !== null ? result.numericValue : (result.value ?? ''));
       surveyStore.updateField(fieldKey, storeValue);
+
+      // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)
+      const displayValue = result.numericValue !== null
+        ? formatFieldValue(fieldKey, result.numericValue)
+        : (result.value ?? '');
 
       // DOM input 갱신
       const inputEl = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${fieldKey}"]`);
       if (inputEl) {
-        inputEl.value = result.value ?? '';
-        this.fieldValues[fieldKey] = result.value ?? '';
+        inputEl.value = displayValue;
+        this.fieldValues[fieldKey] = displayValue;
         this.updateWarningBadge(fieldKey, inputEl);
       }
 
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
-      const ttsText = `수정 ${fieldLabel} ${result.value ?? ''}`;
+      const ttsText = `수정 ${fieldLabel} ${displayValue}`;
       voiceStore.setEchoText(ttsText);
       if (this.ttsEnabled) {
         this.ttsService?.speak(ttsText);
