@@ -37,6 +37,7 @@ import { showToast } from '../utils/toast.js';
 import { todayString, formatDisplayDate, nowIso } from '../utils/dateUtils.js';
 import { collectDeviceInfo } from '../utils/deviceDetect.js';
 import { formatFieldValue } from '../utils/formatFieldValue.js';
+import { FIELD_DATA_TYPES } from '../types.js';
 
 // ─────────────────────────────────────────────
 // 필드 정의 (비대조사 / 품질조사)
@@ -625,8 +626,12 @@ export class SurveyInputPage {
       const val = record[pendingField];
       const input = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${pendingField}"]`);
       if (input && val != null) {
-        input.value = String(val);
-        this.fieldValues[pendingField] = String(val);
+        // F019: 저장값이 숫자이면 formatFieldValue로 표시 포맷 적용 (예: integer 13, decimal 200.0)
+        const displayValue = typeof val === 'number'
+          ? formatFieldValue(pendingField, val)
+          : String(val);
+        input.value = displayValue;
+        this.fieldValues[pendingField] = displayValue;
       }
     }
   }
@@ -1093,7 +1098,11 @@ export class SurveyInputPage {
     // A. field 있고 score >= 0.5
     if (result.field !== null && result.score >= 0.5 && !result.isCorrection) {
       const fieldKey = result.field;
-      const storeValue = result.numericValue !== null ? result.numericValue : (result.value ?? '');
+      // integer 타입 필드(remark 제외)는 storeValue를 반올림하여 저장값-표시값 일치
+      const dataType = FIELD_DATA_TYPES[fieldKey];
+      const storeValue = (dataType?.type === 'integer' && result.numericValue !== null)
+        ? Math.round(result.numericValue)
+        : (result.numericValue !== null ? result.numericValue : (result.value ?? ''));
       surveyStore.updateField(fieldKey, storeValue);
 
       // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)
@@ -1172,7 +1181,11 @@ export class SurveyInputPage {
     // B. isCorrection: true (값만 발화 — lastField 사용)
     if (result.isCorrection && result.field !== null) {
       const fieldKey = result.field;
-      const storeValue = result.numericValue !== null ? result.numericValue : (result.value ?? '');
+      // integer 타입 필드(remark 제외)는 storeValue를 반올림하여 저장값-표시값 일치
+      const dataTypeB = FIELD_DATA_TYPES[fieldKey];
+      const storeValue = (dataTypeB?.type === 'integer' && result.numericValue !== null)
+        ? Math.round(result.numericValue)
+        : (result.numericValue !== null ? result.numericValue : (result.value ?? ''));
       surveyStore.updateField(fieldKey, storeValue);
 
       // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)

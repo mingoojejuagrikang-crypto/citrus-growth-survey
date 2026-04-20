@@ -232,8 +232,10 @@ export function normalize(rawText: string): string {
 
   // 0. STT 오전사 고정 치환 (알려진 패턴)
   // "과시리" = STT가 "과실이"(과실+2)를 오전사하는 패턴
-  result = result.replace(/과시리/g, '과실 2');
-  result = result.replace(/과시이/g, '과실 2');
+  // 한국어는 \b 경계가 동작하지 않으므로 공백/문자열 시작-끝 경계를 명시하여
+  // "조사과시리" 같은 긴 텍스트 내에서 phantom "2" 주입을 방지
+  result = result.replace(/(^|\s)과시리($|\s)/g, '$1과실 2$2');
+  result = result.replace(/(^|\s)과시이($|\s)/g, '$1과실 2$2');
 
   // 1. 콤마 포함 숫자 처리
   //    "10,000,000,000,000,199.9" → "199.9" (비정상 대형 → 마지막 유효 소수 추출)
