@@ -16,6 +16,7 @@
  */
 
 import type { ParseResult, ParserContext } from '../types.js';
+import { FIELD_VALUE_RANGES } from '../types.js';
 import { normalize, removeParticles } from './normalizer.js';
 import { resolveAlias, isKnownAlias, FIELD_ALIASES } from './alias.js';
 
@@ -33,6 +34,23 @@ const SCORE_ALT_FALLBACK = 0.8;
 const SCORE_NORMALIZED = 0.7;
 const SCORE_VALUE_ONLY = 0.5;
 const SCORE_UNKNOWN = 0.0;
+
+// ─────────────────────────────────────────────
+// F025: 범위 검사
+// ─────────────────────────────────────────────
+
+/**
+ * 필드 값이 FIELD_VALUE_RANGES 내에 있는지 검사합니다.
+ *
+ * @param field 필드 키
+ * @param numericValue 검사할 숫자 값
+ * @returns 범위 내이거나 해당 필드에 범위 정의가 없으면 true
+ */
+function isInRange(field: string, numericValue: number): boolean {
+  const range = FIELD_VALUE_RANGES[field];
+  if (!range) return true; // 범위 정의 없는 필드는 통과
+  return numericValue >= range[0] && numericValue <= range[1];
+}
 
 // ─────────────────────────────────────────────
 // 내부 유틸리티
@@ -174,7 +192,13 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
 
   if (match === null) {
     // alternatives fallback (PI-003): rawText 매칭 실패 시 상위 3개 alternatives로 재시도
-    for (const alt of alternatives.slice(0, 3)) {
+    // F025: 범위 검사를 통과하는 첫 번째 alternative를 채택합니다.
+    //       범위 초과 결과는 firstAltResult에 보관하여 모두 실패 시 outOfRange 반환용으로 사용합니다.
+    let firstAltResult: ParseResult | null = null;
+    let firstAltIndex = -1;
+
+    for (let altIdx = 0; altIdx < Math.min(alternatives.length, 3); altIdx++) {
+      const alt = alternatives[altIdx]!;
       if (alt === rawText) continue;
       const altNorm = normalize(alt);
       if (!altNorm) continue;
@@ -187,7 +211,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
         const warning = numericValue !== null && numericValue > OVERFLOW_THRESHOLD
           ? `인식된 값 ${numericValue}이 ${OVERFLOW_THRESHOLD}을 초과합니다.`
           : null;
-        return {
+        const candidate: ParseResult = {
           field: altMatch.fieldKey,
           value: valueStr,
           numericValue,
@@ -195,8 +219,29 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
           method: 'alt-fallback',
           isCorrection: false,
           warning,
+          selectedAltIndex: altIdx,
         };
+
+        // F025: 범위 검사
+        const inRange = numericValue !== null
+          ? isInRange(altMatch.fieldKey, numericValue)
+          : true; // 숫자 없으면 범위 검사 생략
+
+        if (inRange) {
+          return candidate;
+        }
+
+        // 범위 초과: 첫 번째 alt-match를 보관 (모두 실패 시 outOfRange 반환용)
+        if (firstAltResult === null) {
+          firstAltResult = candidate;
+          firstAltIndex = altIdx;
+        }
       }
+    }
+
+    // alt-match가 있었지만 모두 범위 초과
+    if (firstAltResult !== null) {
+      return { ...firstAltResult, selectedAltIndex: firstAltIndex, outOfRange: true };
     }
 
     // 매칭 실패 — 텍스트 전체에서 숫자 추출 시도
@@ -224,6 +269,57 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
     ? `인식된 값 ${numericValue}이 ${OVERFLOW_THRESHOLD}을 초과합니다. 음성 오인식을 확인하세요.`
     : null;
 
+  // F025: 범위 검사 (primary 결과)
+  const primaryInRange = numericValue !== null
+    ? isInRange(match.fieldKey, numericValue)
+    : true; // 숫자 없으면 범위 검사 생략
+
+  if (primaryInRange) {
+    return {
+      field: match.fieldKey,
+      value: valueStr,
+      numericValue,
+      score: match.score,
+      method: match.method,
+      isCorrection: false,
+      warning,
+    };
+  }
+
+  // F025: primary 범위 초과 → alternatives에서 동일 필드의 범위 내 값 탐색
+  for (let altIdx = 0; altIdx < Math.min(alternatives.length, 3); altIdx++) {
+    const alt = alternatives[altIdx]!;
+    if (alt === rawText) continue;
+    const altNorm = normalize(alt);
+    if (!altNorm) continue;
+    const { fieldPart: altFP, valuePart: altVP } = splitFieldAndValue(altNorm);
+    const altTokens = altFP.split(/\s+/).filter((t) => t.length > 0);
+    const altMatch = matchFieldFromTokens(altTokens);
+    if (altMatch !== null && altMatch.fieldKey === match.fieldKey) {
+      const altValueStr = altVP !== '' ? altVP : extractNumber(altNorm);
+      const altNumericValue = altValueStr !== null ? parseFloat(altValueStr) : null;
+      const altInRange = altNumericValue !== null
+        ? isInRange(altMatch.fieldKey, altNumericValue)
+        : false;
+      if (altInRange) {
+        const altWarning = altNumericValue !== null && altNumericValue > OVERFLOW_THRESHOLD
+          ? `인식된 값 ${altNumericValue}이 ${OVERFLOW_THRESHOLD}을 초과합니다.`
+          : null;
+        return {
+          field: altMatch.fieldKey,
+          value: altValueStr,
+          numericValue: altNumericValue,
+          score: SCORE_ALT_FALLBACK,
+          method: 'alt-fallback',
+          isCorrection: false,
+          warning: altWarning,
+          selectedAltIndex: altIdx,
+        };
+      }
+    }
+  }
+
+  // F025: 모든 alternatives 소진 — 원본 결과를 outOfRange 플래그와 함께 반환
   return {
     field: match.fieldKey,
     value: valueStr,
@@ -232,6 +328,8 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
     method: match.method,
     isCorrection: false,
     warning,
+    outOfRange: true,
+    selectedAltIndex: -1,
   };
 }
 

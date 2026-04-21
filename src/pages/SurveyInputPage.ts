@@ -1103,8 +1103,8 @@ export class SurveyInputPage {
 
     const now = new Date().toISOString();
 
-    // A. field 있고 score >= 0.5
-    if (result.field !== null && result.score >= 0.5 && !result.isCorrection) {
+    // A. field 있고 score >= 0.5 (F025: outOfRange 결과는 fail 경로로)
+    if (result.field !== null && result.score >= 0.5 && !result.isCorrection && !result.outOfRange) {
       const fieldKey = result.field;
       // integer 타입 필드(remark 제외)는 storeValue를 반올림하여 저장값-표시값 일치
       const dataType = FIELD_DATA_TYPES[fieldKey];
@@ -1192,6 +1192,8 @@ export class SurveyInputPage {
                 ttsStartMs: ttsStartMsA,
                 saveLogMs: saveLogMsA,
               },
+              // F025: 수락에 사용된 alternative 인덱스 (0 = primary rawText)
+              selectedAltIndex: result.selectedAltIndex ?? 0,
               session: storeState.sessionFields
                 ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
                 : undefined,
@@ -1326,8 +1328,10 @@ export class SurveyInputPage {
       return;
     }
 
-    // C. 인식 실패
-    const failTts = '다시 말씀해 주세요';
+    // C. 인식 실패 (F025: outOfRange 포함)
+    const failTts = result.outOfRange
+      ? '다시 말씀해 주세요 범위를 벗어났습니다'
+      : '다시 말씀해 주세요';
     voiceStore.setEchoText(failTts);
 
     // F023: fail 브랜치에서 TTS 없음 → ttsCallMs/ttsStartMs = 0
@@ -1386,6 +1390,8 @@ export class SurveyInputPage {
               ttsStartMs: ttsStartMsC,
               saveLogMs: saveLogMsC,
             },
+            // F025: outOfRange rejected는 -1, 일반 실패는 undefined
+            selectedAltIndex: result.outOfRange ? -1 : undefined,
             session: storeState.sessionFields
               ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
               : undefined,
