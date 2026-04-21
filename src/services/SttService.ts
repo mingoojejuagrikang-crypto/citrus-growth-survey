@@ -347,6 +347,16 @@ export class SttService {
     const confidence = lastResult[0]?.confidence ?? 0;
 
     if (isFinal) {
+      // F023: _handleResult 진입 시각 캡처
+      const t0 = performance.now();
+
+      // F023: SpeechRecognition event.timeStamp → asrMs 계산
+      // event.timeStamp는 performance.now() 기준이므로 직접 차분 가능.
+      // 비정상값(음수 또는 10초 초과)은 0으로 처리.
+      const eventTs: number = typeof event.timeStamp === 'number' ? event.timeStamp : 0;
+      const rawAsr = eventTs > 0 ? t0 - eventTs : 0;
+      const asrMs = rawAsr >= 0 && rawAsr < 10000 ? rawAsr : 0;
+
       // alternatives 수집
       const alternatives: string[] = [];
       for (let i = 0; i < lastResult.length; i++) {
@@ -359,6 +369,8 @@ export class SttService {
         isFinal: true,
         alternatives,
         confidence,
+        t0,
+        asrMs,
       };
 
       this.onResult?.(resultEvent);

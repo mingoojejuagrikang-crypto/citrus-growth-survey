@@ -115,12 +115,22 @@ export interface VoiceParseResult {
 }
 
 /**
- * 인식 소요 시간 정보.
+ * 파이프라인 단계별 소요 시간 정보 (F023 타이밍 계측).
+ * 모든 필드는 밀리초(ms) 단위. 해당 없는 단계는 0.
+ *
+ * - asrMs:      SpeechRecognition final event → _handleResult 진입 시각 차
+ * - parseMs:    parse() 함수 실행 시간
+ * - ttsCallMs:  _handleResult 진입 ~ ttsService.speak() 호출 시각 차
+ * - ttsStartMs: _handleResult 진입 ~ utterance.onstart 콜백 시각 차
+ * - saveLogMs:  _handleResult 진입 ~ VoiceLogService.saveLog() 호출 직전 시각 차
+ *               (실제 IDB 쓰기 완료까지가 아닌 호출 시점 기준 — 파이프라인 오버헤드 측정용)
  */
 export interface TimingInfo {
-  startMs: number;              // recognition.start() 호출 시각
-  resultMs: number;             // onresult 이벤트 시각
-  durationMs: number;           // 발화 구간 길이 (추정)
+  asrMs: number;      // SpeechRecognition final event → _handleResult 진입
+  parseMs: number;    // parse() 실행 시간
+  ttsCallMs: number;  // _handleResult 진입 ~ speak() 호출
+  ttsStartMs: number; // _handleResult 진입 ~ utterance.onstart
+  saveLogMs: number;  // _handleResult 진입 ~ saveLog() 호출
 }
 
 /**
@@ -280,12 +290,16 @@ export interface LogDateStat {
 
 /**
  * SttService.onResult 콜백 이벤트.
+ * t0: _handleResult 진입 시각 (performance.now())
+ * asrMs: SpeechRecognition final event.timeStamp ~ t0 차이 (0이면 측정 불가)
  */
 export interface SttResultEvent {
   transcript: string;           // rawText
   isFinal: boolean;
   alternatives: string[];
   confidence: number;
+  t0: number;                   // performance.now() at _handleResult entry (F023)
+  asrMs: number;                // browser event.timeStamp → t0 elapsed ms (F023)
 }
 
 export type SttState = 'idle' | 'listening' | 'processing';

@@ -1059,6 +1059,10 @@ export class SurveyInputPage {
    * C. 인식 실패: TTS "다시 말씀해 주세요"
    */
   private handleSttResult(event: SttResultEvent): void {
+    // F023: _handleResult 진입 시각 (SttService에서 전달된 t0) 및 asrMs
+    const t0 = event.t0;
+    const asrMs = event.asrMs;
+
     // activeFields 목록 (auto 타입 제외)
     const activeFieldKeys =
       this.surveyType === 'growth'
@@ -1087,11 +1091,15 @@ export class SurveyInputPage {
     };
 
     const storeState = surveyStore.getState();
+
+    // F023: parse() 실행 시간 계측
+    const parseStart = performance.now();
     const result = parse(event.transcript, {
       lastField: storeState.lastField,
       surveyType: this.surveyType,
       activeFields: activeFieldKeys,
     }, event.alternatives ?? []);
+    const parseMs = performance.now() - parseStart;
 
     const now = new Date().toISOString();
 
@@ -1121,9 +1129,27 @@ export class SurveyInputPage {
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
       const ttsText = `${fieldLabel} ${displayValue}`;
       voiceStore.setEchoText(ttsText);
-      if (this.ttsEnabled) {
-        this.ttsService?.speak(ttsText);
-      }
+
+      // F023: ttsCallMs — speak() 호출 직전 시각 기준
+      // ttsStartMs — utterance.onstart 콜백 기반. 2000ms fallback 후 0 유지.
+      const ttsCallMsA = this.ttsEnabled ? performance.now() - t0 : 0;
+      let ttsStartMsA = 0;
+      const ttsStartPromiseA = new Promise<void>((resolve) => {
+        if (this.ttsEnabled && this.ttsService) {
+          this.ttsService.speak(ttsText, undefined, {
+            onStarted: (ts: number) => {
+              ttsStartMsA = ts - t0;
+              resolve();
+            },
+          });
+        } else {
+          resolve();
+        }
+      });
+      const ttsStartWithTimeoutA = Promise.race([
+        ttsStartPromiseA,
+        new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+      ]);
 
       voiceStore.setRecognitionResult(result);
       setTimeout(() => voiceStore.clearPending(), 2000);
@@ -1139,6 +1165,11 @@ export class SurveyInputPage {
 
         (async () => {
           try {
+            await ttsStartWithTimeoutA;
+
+            // F023: saveLogMs — saveLog() 호출 직전 시각 기준
+            const saveLogMsA = performance.now() - t0;
+
             const logId = await VoiceLogService.saveLog({
               ts: now,
               kind: 'ok',
@@ -1153,6 +1184,13 @@ export class SurveyInputPage {
               status: 'accepted',
               message: ttsText,
               audioFileId: null,
+              timing: {
+                asrMs,
+                parseMs,
+                ttsCallMs: ttsCallMsA,
+                ttsStartMs: ttsStartMsA,
+                saveLogMs: saveLogMsA,
+              },
               session: storeState.sessionFields
                 ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
                 : undefined,
@@ -1204,9 +1242,26 @@ export class SurveyInputPage {
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
       const ttsText = `수정 ${fieldLabel} ${displayValue}`;
       voiceStore.setEchoText(ttsText);
-      if (this.ttsEnabled) {
-        this.ttsService?.speak(ttsText);
-      }
+
+      // F023: ttsCallMs — speak() 호출 직전 시각 기준
+      const ttsCallMsB = this.ttsEnabled ? performance.now() - t0 : 0;
+      let ttsStartMsB = 0;
+      const ttsStartPromiseB = new Promise<void>((resolve) => {
+        if (this.ttsEnabled && this.ttsService) {
+          this.ttsService.speak(ttsText, undefined, {
+            onStarted: (ts: number) => {
+              ttsStartMsB = ts - t0;
+              resolve();
+            },
+          });
+        } else {
+          resolve();
+        }
+      });
+      const ttsStartWithTimeoutB = Promise.race([
+        ttsStartPromiseB,
+        new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+      ]);
 
       voiceStore.setRecognitionResult(result);
       setTimeout(() => voiceStore.clearPending(), 2000);
@@ -1221,6 +1276,9 @@ export class SurveyInputPage {
 
         (async () => {
           try {
+            await ttsStartWithTimeoutB;
+            const saveLogMsB = performance.now() - t0;
+
             const logId = await VoiceLogService.saveLog({
               ts: now,
               kind: 'ok',
@@ -1235,6 +1293,13 @@ export class SurveyInputPage {
               status: 'corrected',
               message: ttsText,
               audioFileId: null,
+              timing: {
+                asrMs,
+                parseMs,
+                ttsCallMs: ttsCallMsB,
+                ttsStartMs: ttsStartMsB,
+                saveLogMs: saveLogMsB,
+              },
               session: storeState.sessionFields
                 ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
                 : undefined,
@@ -1263,9 +1328,27 @@ export class SurveyInputPage {
     // C. 인식 실패
     const failTts = '다시 말씀해 주세요';
     voiceStore.setEchoText(failTts);
-    if (this.ttsEnabled) {
-      this.ttsService?.speak(failTts);
-    }
+
+    // F023: fail 브랜치에서 TTS 없음 → ttsCallMs/ttsStartMs = 0
+    const ttsCallMsC = this.ttsEnabled ? performance.now() - t0 : 0;
+    let ttsStartMsC = 0;
+    const ttsStartPromiseC = new Promise<void>((resolve) => {
+      if (this.ttsEnabled && this.ttsService) {
+        this.ttsService.speak(failTts, undefined, {
+          onStarted: (ts: number) => {
+            ttsStartMsC = ts - t0;
+            resolve();
+          },
+        });
+      } else {
+        resolve();
+      }
+    });
+    const ttsStartWithTimeoutC = Promise.race([
+      ttsStartPromiseC,
+      new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+    ]);
+
     voiceStore.setError('인식 실패');
 
     if (this.voiceLogEnabled) {
@@ -1278,6 +1361,9 @@ export class SurveyInputPage {
 
       (async () => {
         try {
+          await ttsStartWithTimeoutC;
+          const saveLogMsC = performance.now() - t0;
+
           const logId = await VoiceLogService.saveLog({
             ts: now,
             kind: 'fail',
@@ -1292,6 +1378,13 @@ export class SurveyInputPage {
             status: 'rejected',
             message: failTts,
             audioFileId: null,
+            timing: {
+              asrMs,
+              parseMs,
+              ttsCallMs: ttsCallMsC,
+              ttsStartMs: ttsStartMsC,
+              saveLogMs: saveLogMsC,
+            },
             session: storeState.sessionFields
               ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
               : undefined,
