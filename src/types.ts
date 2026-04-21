@@ -98,6 +98,10 @@ export interface VoiceLog {
   message?: string;             // 사용자에게 표시된 TTS 메시지
   timing?: TimingInfo;          // 인식 소요 시간
   feedback?: 'positive' | 'negative' | null; // 사용자 피드백
+  /** F025: 수락에 사용된 alternative 인덱스 (0-based).
+   *  primary(rawText)로 통과했으면 0, alternative N으로 통과했으면 N,
+   *  범위 초과로 복구 불가 rejected이면 -1. */
+  selectedAltIndex?: number;
   device?: DeviceInfo;
   session?: string;             // 조사 세션 키
   audioFileId: string | null;   // 연결된 voiceAudio.id (오디오 OFF 시 null)
@@ -211,6 +215,11 @@ export interface ParseResult {
   method: 'alias' | 'exact' | 'normalized' | 'value-only' | 'unknown' | 'alt-fallback';
   isCorrection: boolean;              // 값만 발화한 수정 모드
   warning: string | null;             // 9999 초과 등 경고 메시지
+  /** F025: 모든 alternatives를 소진해도 범위 밖인 경우 true */
+  outOfRange?: boolean;
+  /** F025: 범위 검사를 통과한 alternative 인덱스 (0-based).
+   *  primaryが통과했으면 undefined. */
+  selectedAltIndex?: number;
 }
 
 // ─────────────────────────────────────────────
@@ -403,6 +412,34 @@ export interface ParserContext {
   surveyType: SurveyType;
   activeFields: string[];
 }
+
+// ─────────────────────────────────────────────
+// 필드 값 범위 (F025) — 파서 내부용 sanity check
+// ─────────────────────────────────────────────
+
+/**
+ * 파서가 음성 인식 결과를 수락하기 위한 물리적 값 범위.
+ *
+ * NOTE: src/utils/validation.ts의 VALIDATION_RANGES와는 목적이 다릅니다.
+ *   - FIELD_VALUE_RANGES (여기): 파서가 명백히 비정상적인 값을 걸러내는 sanity check.
+ *     허용 범위가 넓고, 범위를 벗어나면 alternatives 재시도 후 거부합니다.
+ *   - VALIDATION_RANGES (validation.ts): 최종 저장 전 사용자에게 이상치 경고를 표시하는
+ *     soft warning. 경고가 있어도 저장은 허용합니다.
+ */
+export const FIELD_VALUE_RANGES: Readonly<Record<string, [number, number]>> = {
+  treeNo:            [1,    999],
+  fruitNo:           [1,    999],
+  width:             [10,   300],
+  height:            [10,   300],
+  fruitWeight:       [10,  2000],
+  pericarpWeight:    [1,    500],
+  pericarpThickness: [0.5,   20],
+  brix:              [3,     25],
+  titratableAcidity: [0.1,    5],
+  acidContent:       [0.1,    5],
+  coloring:          [0,     10],
+  nonDestructive:    [0,     25],
+};
 
 // ─────────────────────────────────────────────
 // 필드 데이터 타입 (F019)

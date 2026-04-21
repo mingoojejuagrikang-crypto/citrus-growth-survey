@@ -265,6 +265,15 @@ export function normalize(rawText: string): string {
   const leadingNoisePattern = new RegExp(`^\\d{${LEADING_NOISE_MIN_DIGITS},}\\s+`);
   result = result.replace(leadingNoisePattern, '');
 
+  // F026: 소수점 뒤 "의" → "일" 치환
+  // STT가 "점 일(1)"을 "점 의"로 오전사하는 패턴을 교정합니다.
+  // 예: "변경 211 점 의" → "변경 211 점 일" → normalizeDecimal이 211.1로 변환
+  // 예: "211점의" → "211점일"
+  // 이 치환은 3-0 단계(한국어 숫자 토큰 병합) 이전에 적용해야
+  // "점 의" 토큰이 병합 전에 올바르게 교정됩니다.
+  result = result.replace(/점 의(?=\s|$)/g, '점 일');  // 공백 분리형: "점 의"
+  result = result.replace(/점의/g, '점일');             // 붙어쓴 형: "점의"
+
   // 3-0. 점/쩜 전후 공백 분리 한국어 숫자 토큰 병합
   // "이백 이십 이 점 이" → "이백이십이점이" → normalizeDecimal이 222.2로 변환
   const KO_NUM_CHARS = '영일이삼사오육칠팔구십백천';
