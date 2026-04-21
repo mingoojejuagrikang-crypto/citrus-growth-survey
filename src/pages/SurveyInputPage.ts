@@ -1127,7 +1127,8 @@ export class SurveyInputPage {
       }
 
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
-      const ttsText = `${fieldLabel} ${displayValue}`;
+      const ttsValueOnly = localStorage.getItem('tts.valueOnly') === 'true';
+      const ttsText = ttsValueOnly ? displayValue : `${fieldLabel} ${displayValue}`;
       voiceStore.setEchoText(ttsText);
 
       // F023: ttsCallMs — speak() 호출 직전 시각 기준

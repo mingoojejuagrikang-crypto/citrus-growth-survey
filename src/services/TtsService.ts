@@ -26,6 +26,18 @@ const IOS_CANCEL_DELAY_MS = 50;
 /** iOS Safari UA 판별 정규식 */
 const IOS_UA_REGEX = /iPad|iPhone|iPod/;
 
+/** TTS 재생 속도 localStorage 키 */
+const TTS_RATE_STORAGE_KEY = 'tts.rate';
+
+/** TTS 재생 속도 기본값 */
+const TTS_RATE_DEFAULT = 1.2;
+
+/** TTS 재생 속도 최솟값 */
+const TTS_RATE_MIN = 0.8;
+
+/** TTS 재생 속도 최댓값 */
+const TTS_RATE_MAX = 2.0;
+
 // ─────────────────────────────────────────────
 // 내부 유틸리티
 // ─────────────────────────────────────────────
@@ -66,9 +78,30 @@ export class TtsService {
   private readonly _isSupported: boolean;
   private readonly _isIOS: boolean;
 
+  /** 현재 재생 속도 (0.8~2.0) */
+  private _rate: number;
+
   constructor() {
     this._isSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
     this._isIOS = isIOS();
+    this._rate = TtsService._loadRate();
+  }
+
+  /**
+   * localStorage에서 TTS 재생 속도를 읽어 클램핑 후 반환합니다.
+   *
+   * @returns 클램핑된 재생 속도 (0.8~2.0)
+   */
+  private static _loadRate(): number {
+    try {
+      const raw = localStorage.getItem(TTS_RATE_STORAGE_KEY);
+      if (raw === null) return TTS_RATE_DEFAULT;
+      const parsed = parseFloat(raw);
+      if (!Number.isFinite(parsed)) return TTS_RATE_DEFAULT;
+      return Math.min(TTS_RATE_MAX, Math.max(TTS_RATE_MIN, parsed));
+    } catch {
+      return TTS_RATE_DEFAULT;
+    }
   }
 
   // ── 공개 getter ──
@@ -81,6 +114,31 @@ export class TtsService {
   /** SpeechSynthesis API 지원 여부 */
   get isSupported(): boolean {
     return this._isSupported;
+  }
+
+  /**
+   * 현재 TTS 재생 속도를 반환합니다.
+   *
+   * @returns 재생 속도 (0.8~2.0)
+   */
+  getRate(): number {
+    return this._rate;
+  }
+
+  /**
+   * TTS 재생 속도를 설정하고 localStorage에 저장합니다.
+   * 다음 speak() 호출부터 적용됩니다.
+   *
+   * @param rate 재생 속도 (0.8~2.0 범위로 클램핑됨)
+   */
+  setRate(rate: number): void {
+    const clamped = Math.min(TTS_RATE_MAX, Math.max(TTS_RATE_MIN, rate));
+    this._rate = clamped;
+    try {
+      localStorage.setItem(TTS_RATE_STORAGE_KEY, String(clamped));
+    } catch {
+      // localStorage 쓰기 실패는 무시 (private 모드 등)
+    }
   }
 
   // ── 공개 메서드 ──
@@ -161,7 +219,7 @@ export class TtsService {
     const utt = new SpeechSynthesisUtterance(text);
 
     utt.lang = options?.lang ?? DEFAULT_LANG;
-    if (options?.rate !== undefined) utt.rate = options.rate;
+    utt.rate = options?.rate ?? this._rate;
     if (options?.pitch !== undefined) utt.pitch = options.pitch;
     if (options?.volume !== undefined) utt.volume = options.volume;
 

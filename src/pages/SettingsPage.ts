@@ -13,9 +13,17 @@
  */
 
 import * as SettingsService from '../services/SettingsService.js';
+import { TtsService } from '../services/TtsService.js';
 import type { AppDefaults } from '../types.js';
 import { showConfirm } from '../components/ConfirmDialog.js';
 import { showToast } from '../utils/toast.js';
+
+// ─────────────────────────────────────────────
+// 상수
+// ─────────────────────────────────────────────
+
+/** TTS 값만 읽기 토글 localStorage 키 */
+const TTS_VALUE_ONLY_KEY = 'tts.valueOnly';
 
 // ─────────────────────────────────────────────
 // 기본 항목 세트 정의 (읽기 전용 안내용)
@@ -45,6 +53,15 @@ export class SettingsPage {
   private newFarmerInput: HTMLInputElement | null = null;
   private newLabelInput: HTMLInputElement | null = null;
   private newTreatmentInput: HTMLInputElement | null = null;
+
+  /** TTS 설정 미리듣기/속도 조정용 서비스 인스턴스 */
+  private readonly ttsService: TtsService = new TtsService();
+
+  /** 현재 TTS 재생 속도 (슬라이더 상태) */
+  private ttsRate: number = this.ttsService.getRate();
+
+  /** TTS 값만 읽기 (필드 레이블 생략) 여부 */
+  private ttsValueOnly: boolean = false;
 
   async mount(container: HTMLElement): Promise<void> {
     this.el = document.createElement('div');
@@ -99,6 +116,11 @@ export class SettingsPage {
         SettingsService.get<boolean>('audioRecordEnabled', false),
         SettingsService.get<boolean>('voiceLogEnabled', true),
       ]);
+
+      // tts.valueOnly는 localStorage에 저장 (SettingsService 독립)
+      this.ttsValueOnly = localStorage.getItem('tts.valueOnly') === 'true';
+      // ttsRate는 TtsService 생성 시 이미 로드됨 — 여기서 sync
+      this.ttsRate = this.ttsService.getRate();
     } catch {
       showToast('설정을 불러오지 못했습니다.', 'error');
     }
@@ -215,6 +237,46 @@ export class SettingsPage {
           <div class="preset-info-box">
             <div class="preset-info-title">🍊 품질조사 기본 세트</div>
             <div class="preset-info-fields">${QUALITY_PRESET_FIELDS.join(' · ')}</div>
+          </div>
+        </section>
+
+        <!-- TTS 속도 설정 -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">TTS 속도</h2>
+
+          <div class="form-group" style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <label class="form-label" for="tts-rate-slider" style="margin-bottom:0;">재생 속도</label>
+              <span id="tts-rate-label" style="font-weight:600;color:var(--color-primary);min-width:40px;text-align:right;">${this.ttsRate.toFixed(1)}x</span>
+            </div>
+            <input
+              type="range"
+              id="tts-rate-slider"
+              min="0.8"
+              max="2.0"
+              step="0.1"
+              value="${this.ttsRate}"
+              style="width:100%;accent-color:var(--color-primary);"
+            />
+            <div style="display:flex;justify-content:space-between;font-size:var(--font-size-xs);color:var(--color-text-secondary);margin-top:4px;">
+              <span>0.8x (느림)</span>
+              <span>2.0x (빠름)</span>
+            </div>
+          </div>
+
+          <button class="btn btn-secondary" id="tts-test-btn" type="button" style="height:44px;font-size:16px;margin-bottom:4px;">
+            재생 테스트
+          </button>
+
+          <div class="toggle-row" style="margin-top:12px;">
+            <div>
+              <div class="toggle-label">TTS 메시지 축약</div>
+              <div class="toggle-description">필드 레이블 생략 — "횡경 200.0" 대신 "200.0"</div>
+            </div>
+            <label class="toggle-switch" aria-label="TTS 메시지 축약">
+              <input type="checkbox" id="tts-value-only-toggle" ${this.ttsValueOnly ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+            </label>
           </div>
         </section>
 
@@ -457,6 +519,35 @@ export class SettingsPage {
     logToggle?.addEventListener('change', async () => {
       this.voiceLogEnabled = logToggle.checked;
       await SettingsService.set('voiceLogEnabled', this.voiceLogEnabled);
+    });
+
+    // TTS 속도 슬라이더
+    const ttsRateSlider = this.el.querySelector<HTMLInputElement>('#tts-rate-slider');
+    const ttsRateLabel = this.el.querySelector<HTMLElement>('#tts-rate-label');
+    ttsRateSlider?.addEventListener('input', () => {
+      const rate = parseFloat(ttsRateSlider.value);
+      if (!Number.isFinite(rate)) return;
+      this.ttsRate = rate;
+      this.ttsService.setRate(rate);
+      if (ttsRateLabel) ttsRateLabel.textContent = `${rate.toFixed(1)}x`;
+    });
+
+    // TTS 재생 테스트 버튼
+    const ttsTestBtn = this.el.querySelector<HTMLButtonElement>('#tts-test-btn');
+    ttsTestBtn?.addEventListener('click', () => {
+      this.ttsService.unlock();
+      this.ttsService.speak('횡경 200.0');
+    });
+
+    // TTS 메시지 축약 토글
+    const ttsValueOnlyToggle = this.el.querySelector<HTMLInputElement>('#tts-value-only-toggle');
+    ttsValueOnlyToggle?.addEventListener('change', () => {
+      this.ttsValueOnly = ttsValueOnlyToggle.checked;
+      try {
+        localStorage.setItem(TTS_VALUE_ONLY_KEY, String(this.ttsValueOnly));
+      } catch {
+        // localStorage 쓰기 실패 무시
+      }
     });
 
     // 저장 버튼
