@@ -22,6 +22,7 @@ const initialVoiceState: VoiceState = {
   lastEchoText: '',
   isCorrection: false,
   errorMessage: null,
+  awaitingValueFor: null,
 };
 
 // ─────────────────────────────────────────────
@@ -114,8 +115,19 @@ class VoiceStore extends Observable<VoiceState> {
   }
 
   /**
+   * F034: Two-step 모드 — 값 대기 필드를 설정하거나 해제합니다.
+   * null을 전달하면 Two-step 모드를 해제합니다.
+   *
+   * @param field 대기할 필드 키 또는 null (해제)
+   */
+  setAwaitingValueFor(field: string | null): void {
+    this.setState({ awaitingValueFor: field });
+  }
+
+  /**
    * TTS 에코 완료 후 pending 상태를 초기화합니다.
    * F030: currentTtsText도 함께 초기화합니다 (iOS onend 미발화 시 안전망).
+   * F034: awaitingValueFor는 5초 별도 타이머로만 해제하므로 여기서 건드리지 않습니다.
    */
   clearPending(): void {
     this.setState({

@@ -1176,10 +1176,13 @@ export class SurveyInputPage {
 
     const storeState = surveyStore.getState();
 
+    // F034: Two-step 모드 — awaitingValueFor 우선 사용
+    const awaitingValueFor = voiceStore.getState().awaitingValueFor;
+
     // F023: parse() 실행 시간 계측
     const parseStart = performance.now();
     const result = parse(event.transcript, {
-      lastField: storeState.lastField,
+      lastField: awaitingValueFor ?? storeState.lastField,  // F034: awaitingValueFor 우선
       surveyType: this.surveyType,
       activeFields: activeFieldKeys,
     }, event.alternatives ?? []);
@@ -1187,8 +1190,65 @@ export class SurveyInputPage {
 
     const now = new Date().toISOString();
 
+    // ── Branch A1: F034 항목명만 인식 → Two-step 모드 진입 ──
+    if (result.isFieldOnly === true && result.field !== null && result.score >= 0.5) {
+      const fieldKey = result.field;
+      const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
+
+      // 대기 상태 설정
+      voiceStore.setAwaitingValueFor(fieldKey);
+      surveyStore.setLastField(fieldKey);
+
+      // TTS: 항목명만
+      voiceStore.setEchoText(fieldLabel);
+      const ttsCallMsA1 = this.ttsEnabled ? performance.now() - t0 : 0;
+      if (this.ttsEnabled && this.ttsService) {
+        this.ttsService.speak(fieldLabel);
+      }
+
+      // 5초 타이머: 자동 해제 (다른 항목으로 교체된 경우는 noop)
+      const waitingField = fieldKey;
+      setTimeout(() => {
+        if (voiceStore.getState().awaitingValueFor === waitingField) {
+          voiceStore.setAwaitingValueFor(null);
+        }
+      }, 5_000);
+
+      // 로그 저장
+      if (this.voiceLogEnabled) {
+        const saveLogMsA1 = performance.now() - t0;
+        VoiceLogService.saveLog({
+          ts: now,
+          kind: 'ok',
+          rawText: event.transcript,
+          alternatives: event.alternatives,
+          parse: {
+            field: result.field,
+            value: null,
+            score: result.score,
+            method: result.method,
+          },
+          status: 'accepted',
+          message: fieldLabel,
+          audioFileId: null,
+          timing: {
+            asrMs,
+            parseMs,
+            ttsCallMs: ttsCallMsA1,
+            ttsStartMs: 0,
+            saveLogMs: saveLogMsA1,
+          },
+          session: storeState.sessionFields
+            ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
+            : undefined,
+          device: collectDeviceInfo(),
+        }).catch(() => {});
+      }
+      return;
+    }
+
     // A. field 있고 score >= 0.5 (F025: outOfRange 결과는 fail 경로로)
-    if (result.field !== null && result.score >= 0.5 && !result.isCorrection && !result.outOfRange) {
+    if (result.field !== null && result.score >= 0.5 && !result.isCorrection && !result.outOfRange && !result.isFieldOnly) {
       const fieldKey = result.field;
       // integer 타입 필드(remark 제외)는 storeValue를 반올림하여 저장값-표시값 일치
       const dataType = FIELD_DATA_TYPES[fieldKey];
@@ -1203,6 +1263,7 @@ export class SurveyInputPage {
       } else {
         surveyStore.updateField(fieldKey, storeValue);
       }
+      voiceStore.setAwaitingValueFor(null);  // F034: Two-step 해제
 
       // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)
       const displayValue = result.numericValue !== null
@@ -1348,6 +1409,7 @@ export class SurveyInputPage {
       } else {
         surveyStore.updateField(fieldKey, storeValue);
       }
+      voiceStore.setAwaitingValueFor(null);  // F034: Two-step 해제
 
       // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)
       const displayValue = result.numericValue !== null
@@ -1377,7 +1439,12 @@ export class SurveyInputPage {
       }
 
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
-      const ttsText = `수정 ${fieldLabel} ${displayValue}`;
+      // F034: Two-step 모드에서 온 경우 값만 TTS (항목명은 단계 1에서 이미 확인)
+      // Two-step이 아닌 경우(기존 isCorrection 수정 모드)는 "수정 항목 값" 유지
+      const fromTwoStep = (awaitingValueFor !== null);
+      const ttsText = fromTwoStep
+        ? displayValue                          // "155.5"만
+        : `수정 ${fieldLabel} ${displayValue}`; // 기존: "수정 횡경 155.5"
       voiceStore.setEchoText(ttsText);
 
       // F023: ttsCallMs — speak() 호출 직전 시각 기준

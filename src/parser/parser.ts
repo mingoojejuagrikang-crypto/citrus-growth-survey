@@ -178,6 +178,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
       isCorrection: false,
       warning: null,
       hasCorrectionPrefix: false,
+      isFieldOnly: false,
     };
   }
 
@@ -198,6 +199,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
       isCorrection: lastField !== null,
       warning,
       hasCorrectionPrefix: false,
+      isFieldOnly: false,
     };
   }
 
@@ -239,6 +241,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
           warning,
           selectedAltIndex: altIdx,
           hasCorrectionPrefix,
+          isFieldOnly: false,
         };
 
         // F025: 범위 검사
@@ -260,7 +263,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
 
     // alt-match가 있었지만 모두 범위 초과
     if (firstAltResult !== null) {
-      return { ...firstAltResult, selectedAltIndex: firstAltIndex, outOfRange: true };
+      return { ...firstAltResult, selectedAltIndex: firstAltIndex, outOfRange: true, isFieldOnly: false };
     }
 
     // 매칭 실패 — 텍스트 전체에서 숫자 추출 시도
@@ -279,6 +282,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
       isCorrection: false,
       warning,
       hasCorrectionPrefix,
+      isFieldOnly: false,
     };
   }
 
@@ -295,6 +299,9 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
     finalValueStr = tokens.slice(match.matchedIdx + 1).join(' ').trim() || null;
   }
 
+  // 5-a. 이후: F034 — 항목명만 인식 여부 (값 없음)
+  const isFieldOnly = finalValueStr === null;
+
   // F025: 범위 검사 (primary 결과)
   const primaryInRange = numericValue !== null
     ? isInRange(match.fieldKey, numericValue)
@@ -310,6 +317,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
       isCorrection: false,
       warning,
       hasCorrectionPrefix,
+      isFieldOnly,
     };
   }
 
@@ -342,6 +350,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
           warning: altWarning,
           selectedAltIndex: altIdx,
           hasCorrectionPrefix,
+          isFieldOnly: false,
         };
       }
     }
@@ -359,6 +368,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
     outOfRange: true,
     selectedAltIndex: -1,
     hasCorrectionPrefix,
+    isFieldOnly: false,
   };
 }
 

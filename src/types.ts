@@ -222,6 +222,8 @@ export interface ParseResult {
   selectedAltIndex?: number;
   /** F031: "수정"/"아니" 프리픽스가 있었으면 true */
   hasCorrectionPrefix?: boolean;
+  /** F034: 항목명만 인식됨 (값 없음). Two-step 모드 진입 신호. */
+  isFieldOnly?: boolean;
 }
 
 // ─────────────────────────────────────────────
@@ -394,6 +396,8 @@ export interface VoiceState {
   lastEchoText: string;
   isCorrection: boolean;
   errorMessage: string | null;
+  /** F034: Two-step 모드 — 현재 값을 기다리는 필드 키. null이면 대기 중 아님. */
+  awaitingValueFor: string | null;
 }
 
 export interface SyncState {
