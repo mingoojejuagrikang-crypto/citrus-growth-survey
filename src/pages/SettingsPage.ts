@@ -270,8 +270,8 @@ export class SettingsPage {
 
           <div class="toggle-row" style="margin-top:12px;">
             <div>
-              <div class="toggle-label">TTS 메시지 축약</div>
-              <div class="toggle-description">필드 레이블 생략 — "횡경 200.0" 대신 "200.0"</div>
+              <div class="toggle-label">TTS 메시지 축약 <span style="color:var(--color-warning,#e67e22);font-size:0.8em;">실험적</span></div>
+              <div class="toggle-description">필드 레이블 생략 — "횡경 200.0" 대신 "200.0". 라벨 오인식 위험이 있어 현재 사용 비권장.</div>
             </div>
             <label class="toggle-switch" aria-label="TTS 메시지 축약">
               <input type="checkbox" id="tts-value-only-toggle" ${this.ttsValueOnly ? 'checked' : ''} />

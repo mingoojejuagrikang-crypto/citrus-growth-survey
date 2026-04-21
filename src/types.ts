@@ -220,6 +220,8 @@ export interface ParseResult {
   /** F025: 범위 검사를 통과한 alternative 인덱스 (0-based).
    *  primaryが통과했으면 undefined. */
   selectedAltIndex?: number;
+  /** F031: "수정"/"아니" 프리픽스가 있었으면 true */
+  hasCorrectionPrefix?: boolean;
 }
 
 // ─────────────────────────────────────────────

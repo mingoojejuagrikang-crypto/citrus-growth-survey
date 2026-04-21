@@ -110,6 +110,9 @@ export class SurveyInputPage {
   // 측정값 (Record)
   private fieldValues: Record<string, string> = {};
 
+  // F031/변경1C: 세션 필드 키 집합 (updateSessionFields 라우팅용)
+  private static readonly SESSION_FIELD_KEYS = new Set<string>(['farmerName', 'label', 'treatment', 'treeNo']);
+
   constructor(surveyType: SurveyType) {
     this.surveyType = surveyType;
   }
@@ -380,7 +383,7 @@ export class SurveyInputPage {
       <div class="session-header-row">
         <span class="session-header-label">농가명</span>
         <div class="session-header-value">
-          <select id="session-farmer" class="session-header-select">
+          <select id="session-farmer" class="session-header-select" data-field-key="farmerName">
             ${farmerOptions}
           </select>
         </div>
@@ -388,7 +391,7 @@ export class SurveyInputPage {
       <div class="session-header-row">
         <span class="session-header-label">라벨</span>
         <div class="session-header-value">
-          <select id="session-label" class="session-header-select">
+          <select id="session-label" class="session-header-select" data-field-key="label">
             ${labelOptions}
           </select>
         </div>
@@ -396,7 +399,7 @@ export class SurveyInputPage {
       <div class="session-header-row">
         <span class="session-header-label">처리</span>
         <div class="session-header-value">
-          <select id="session-treatment" class="session-header-select">
+          <select id="session-treatment" class="session-header-select" data-field-key="treatment">
             ${treatmentOptions}
           </select>
         </div>
@@ -404,7 +407,7 @@ export class SurveyInputPage {
       <div class="session-header-row">
         <span class="session-header-label">조사나무</span>
         <div class="session-header-value">
-          <select id="session-tree" class="session-header-select">
+          <select id="session-tree" class="session-header-select" data-field-key="treeNo">
             ${treeOptions}
           </select>
         </div>
@@ -416,6 +419,7 @@ export class SurveyInputPage {
             type="number"
             id="session-fruit"
             class="session-header-input"
+            data-field-key="fruitNo"
             value="${(surveyStore.getState().currentRecord as Partial<GrowthRecord>).fruitNo ?? ''}"
             min="1" max="5"
             placeholder="1~5"
@@ -1152,6 +1156,9 @@ export class SurveyInputPage {
 
     // 필드명 → TTS 텍스트 매핑
     const fieldLabelMap: Record<string, string> = {
+      farmerName: '농가명',
+      label: '라벨',
+      treatment: '처리',
       treeNo: '조사나무',
       fruitNo: '조사과실',
       width: '횡경',
@@ -1188,24 +1195,52 @@ export class SurveyInputPage {
       const storeValue = (dataType?.type === 'integer' && result.numericValue !== null)
         ? Math.round(result.numericValue)
         : (result.numericValue !== null ? result.numericValue : (result.value ?? ''));
-      surveyStore.updateField(fieldKey, storeValue);
+
+      // 변경1C: 세션 필드는 updateSessionFields, 그 외는 updateField
+      if (SurveyInputPage.SESSION_FIELD_KEYS.has(fieldKey)) {
+        surveyStore.updateSessionFields({ [fieldKey]: storeValue } as Partial<SessionFields>);
+        (this.sessionFields as unknown as Record<string, unknown>)[fieldKey] = storeValue;
+      } else {
+        surveyStore.updateField(fieldKey, storeValue);
+      }
 
       // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)
       const displayValue = result.numericValue !== null
         ? formatFieldValue(fieldKey, result.numericValue)
         : (result.value ?? '');
 
-      // DOM input 갱신
-      const inputEl = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${fieldKey}"]`);
+      // DOM 갱신 — select/input 분기 (변경1D)
+      const inputEl = this.el?.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-field-key="${fieldKey}"]`);
       if (inputEl) {
-        inputEl.value = displayValue;
-        this.fieldValues[fieldKey] = displayValue;
-        this.updateWarningBadge(fieldKey, inputEl);
+        if (inputEl instanceof HTMLSelectElement) {
+          // 대소문자 무시 옵션 매칭
+          const lowerDisplay = displayValue.toLowerCase();
+          const matched = Array.from(inputEl.options).find(
+            (o) => o.value.toLowerCase() === lowerDisplay || o.text.toLowerCase() === lowerDisplay,
+          );
+          if (matched) {
+            inputEl.value = matched.value;
+            // matched.value로 store/sessionFields 재동기화 (대소문자 정규화)
+            if (SurveyInputPage.SESSION_FIELD_KEYS.has(fieldKey)) {
+              surveyStore.updateSessionFields({ [fieldKey]: matched.value } as Partial<SessionFields>);
+              (this.sessionFields as unknown as Record<string, unknown>)[fieldKey] = matched.value;
+            }
+          }
+        } else {
+          inputEl.value = displayValue;
+          this.fieldValues[fieldKey] = displayValue;
+          this.updateWarningBadge(fieldKey, inputEl as HTMLInputElement);
+        }
       }
 
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
       const ttsValueOnly = localStorage.getItem('tts.valueOnly') === 'true';
-      const ttsText = ttsValueOnly ? displayValue : `${fieldLabel} ${displayValue}`;
+      // F031: 수정 프리픽스가 있었으면 TTS에도 "수정 " 프리픽스 추가
+      const ttsText = ttsValueOnly
+        ? displayValue
+        : result.hasCorrectionPrefix
+          ? `수정 ${fieldLabel} ${displayValue}`
+          : `${fieldLabel} ${displayValue}`;
       voiceStore.setEchoText(ttsText);
 
       // F023: ttsCallMs — speak() 호출 직전 시각 기준
@@ -1259,7 +1294,8 @@ export class SurveyInputPage {
                 score: result.score,
                 method: result.method,
               },
-              status: 'accepted',
+              // F031: hasCorrectionPrefix이면 'corrected', 아니면 'accepted'
+              status: result.hasCorrectionPrefix ? 'corrected' : 'accepted',
               message: ttsText,
               audioFileId: null,
               timing: {
@@ -1304,19 +1340,40 @@ export class SurveyInputPage {
       const storeValue = (dataTypeB?.type === 'integer' && result.numericValue !== null)
         ? Math.round(result.numericValue)
         : (result.numericValue !== null ? result.numericValue : (result.value ?? ''));
-      surveyStore.updateField(fieldKey, storeValue);
+
+      // 변경1C: 세션 필드는 updateSessionFields, 그 외는 updateField
+      if (SurveyInputPage.SESSION_FIELD_KEYS.has(fieldKey)) {
+        surveyStore.updateSessionFields({ [fieldKey]: storeValue } as Partial<SessionFields>);
+        (this.sessionFields as unknown as Record<string, unknown>)[fieldKey] = storeValue;
+      } else {
+        surveyStore.updateField(fieldKey, storeValue);
+      }
 
       // F019: 필드 데이터 타입에 맞게 표시값 포맷 (200 → "200.0" 등)
       const displayValue = result.numericValue !== null
         ? formatFieldValue(fieldKey, result.numericValue)
         : (result.value ?? '');
 
-      // DOM input 갱신
-      const inputEl = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${fieldKey}"]`);
+      // DOM 갱신 — select/input 분기 (변경1D)
+      const inputEl = this.el?.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-field-key="${fieldKey}"]`);
       if (inputEl) {
-        inputEl.value = displayValue;
-        this.fieldValues[fieldKey] = displayValue;
-        this.updateWarningBadge(fieldKey, inputEl);
+        if (inputEl instanceof HTMLSelectElement) {
+          const lowerDisplay = displayValue.toLowerCase();
+          const matched = Array.from(inputEl.options).find(
+            (o) => o.value.toLowerCase() === lowerDisplay || o.text.toLowerCase() === lowerDisplay,
+          );
+          if (matched) {
+            inputEl.value = matched.value;
+            if (SurveyInputPage.SESSION_FIELD_KEYS.has(fieldKey)) {
+              surveyStore.updateSessionFields({ [fieldKey]: matched.value } as Partial<SessionFields>);
+              (this.sessionFields as unknown as Record<string, unknown>)[fieldKey] = matched.value;
+            }
+          }
+        } else {
+          inputEl.value = displayValue;
+          this.fieldValues[fieldKey] = displayValue;
+          this.updateWarningBadge(fieldKey, inputEl as HTMLInputElement);
+        }
       }
 
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;

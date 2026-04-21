@@ -35,6 +35,9 @@ const SCORE_NORMALIZED = 0.7;
 const SCORE_VALUE_ONLY = 0.5;
 const SCORE_UNKNOWN = 0.0;
 
+/** F031: 수정 의도를 나타내는 프리픽스 목록 (lowercase, 트레일링 공백 포함) */
+const CORRECTION_PREFIXES = ['수정 ', '아니 ', '아니야 ', '아니요 '] as const;
+
 // ─────────────────────────────────────────────
 // F025: 범위 검사
 // ─────────────────────────────────────────────
@@ -109,27 +112,28 @@ function splitFieldAndValue(normalized: string): {
  */
 function matchFieldFromTokens(
   tokens: string[],
-): { fieldKey: string; score: number; method: ParseResult['method'] } | null {
+): { fieldKey: string; score: number; method: ParseResult['method']; matchedIdx: number } | null {
   // 각 토큰에 대해 조사 제거 후 alias 매칭
-  for (const token of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
     const cleaned = removeParticles(token);
 
     // 1. 정확 일치 (alias 원본 그대로)
     if (isKnownAlias(cleaned)) {
       const fieldKey = resolveAlias(cleaned);
-      return { fieldKey, score: SCORE_ALIAS, method: 'alias' };
+      return { fieldKey, score: SCORE_ALIAS, method: 'alias', matchedIdx: i };
     }
 
     // 2. 정확 일치 (필드 키 그대로)
     if (cleaned in FIELD_ALIASES) {
-      return { fieldKey: cleaned, score: SCORE_EXACT, method: 'exact' };
+      return { fieldKey: cleaned, score: SCORE_EXACT, method: 'exact', matchedIdx: i };
     }
 
     // 3. 소문자 정규화 후 재시도
     const lowerCleaned = cleaned.toLowerCase();
     if (isKnownAlias(lowerCleaned)) {
       const fieldKey = resolveAlias(lowerCleaned);
-      return { fieldKey, score: SCORE_NORMALIZED, method: 'normalized' };
+      return { fieldKey, score: SCORE_NORMALIZED, method: 'normalized', matchedIdx: i };
     }
   }
   return null;
@@ -149,6 +153,18 @@ function matchFieldFromTokens(
 export function parse(rawText: string, context: ParserContext, alternatives: string[] = []): ParseResult {
   const { lastField } = context;
 
+  // F031: 수정 프리픽스 감지
+  // 파서가 이미 모르는 토큰("수정", "아니")을 스킵하므로 필드+값 추출은 정상 동작.
+  // 여기서는 플래그만 설정하고, 프리픽스 제거는 하지 않는다.
+  let hasCorrectionPrefix = false;
+  const rawLower = rawText.trim().toLowerCase();
+  for (const prefix of CORRECTION_PREFIXES) {
+    if (rawLower.startsWith(prefix)) {
+      hasCorrectionPrefix = true;
+      break;
+    }
+  }
+
   // 1. 정규화
   const normalized = normalize(rawText);
 
@@ -161,6 +177,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
       method: 'unknown',
       isCorrection: false,
       warning: null,
+      hasCorrectionPrefix: false,
     };
   }
 
@@ -180,6 +197,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
       method: 'value-only',
       isCorrection: lastField !== null,
       warning,
+      hasCorrectionPrefix: false,
     };
   }
 
@@ -220,6 +238,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
           isCorrection: false,
           warning,
           selectedAltIndex: altIdx,
+          hasCorrectionPrefix,
         };
 
         // F025: 범위 검사
@@ -259,6 +278,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
       method: 'unknown',
       isCorrection: false,
       warning,
+      hasCorrectionPrefix,
     };
   }
 
@@ -269,6 +289,12 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
     ? `인식된 값 ${numericValue}이 ${OVERFLOW_THRESHOLD}을 초과합니다. 음성 오인식을 확인하세요.`
     : null;
 
+  // 5-a. 숫자 없는 텍스트 필드 (label, treatment 등): 필드 토큰 이후 잔여 텍스트를 값으로 사용
+  let finalValueStr: string | null = valueStr;
+  if (finalValueStr === null && match.matchedIdx < tokens.length - 1) {
+    finalValueStr = tokens.slice(match.matchedIdx + 1).join(' ').trim() || null;
+  }
+
   // F025: 범위 검사 (primary 결과)
   const primaryInRange = numericValue !== null
     ? isInRange(match.fieldKey, numericValue)
@@ -277,12 +303,13 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
   if (primaryInRange) {
     return {
       field: match.fieldKey,
-      value: valueStr,
+      value: finalValueStr,
       numericValue,
       score: match.score,
       method: match.method,
       isCorrection: false,
       warning,
+      hasCorrectionPrefix,
     };
   }
 
@@ -314,6 +341,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
           isCorrection: false,
           warning: altWarning,
           selectedAltIndex: altIdx,
+          hasCorrectionPrefix,
         };
       }
     }
@@ -322,7 +350,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
   // F025: 모든 alternatives 소진 — 원본 결과를 outOfRange 플래그와 함께 반환
   return {
     field: match.fieldKey,
-    value: valueStr,
+    value: finalValueStr,
     numericValue,
     score: match.score,
     method: match.method,
@@ -330,6 +358,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
     warning,
     outOfRange: true,
     selectedAltIndex: -1,
+    hasCorrectionPrefix,
   };
 }
 
