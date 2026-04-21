@@ -39,6 +39,8 @@ from typing import Any, Iterable
 from dotenv import load_dotenv
 from openai import OpenAI
 
+# 로컬 faster-whisper는 지연 import (--local 옵션 사용 시에만)
+
 # ─────────────────────────────────────────────
 # 경로 상수
 # ─────────────────────────────────────────────
@@ -161,11 +163,12 @@ WHISPER_PROMPT = (
 
 
 def transcribe_whisper(
-    client: OpenAI,
+    client: OpenAI | None,
     audio_path: Path,
     *,
     use_cache: bool,
     log_id: str,
+    local_model: Any = None,
 ) -> str | None:
     """Whisper API 호출. 결과는 shared/whisper-cache/{logId}.json 에 캐시."""
     cache_file = CACHE_DIR / f'{log_id}.json'
@@ -177,16 +180,29 @@ def transcribe_whisper(
             pass  # 손상 시 재호출
 
     try:
-        with audio_path.open('rb') as f:
-            resp = client.audio.transcriptions.create(
-                model='whisper-1',
-                file=f,
+        if local_model is not None:
+            # faster-whisper 로컬 실행
+            segments, _info = local_model.transcribe(
+                str(audio_path),
                 language='ko',
-                prompt=WHISPER_PROMPT,
-                response_format='json',
+                initial_prompt=WHISPER_PROMPT,
+                beam_size=5,
                 temperature=0,
+                vad_filter=True,
             )
-        text = (resp.text or '').strip()
+            text = ''.join(seg.text for seg in segments).strip()
+        else:
+            # OpenAI API
+            with audio_path.open('rb') as f:
+                resp = client.audio.transcriptions.create(
+                    model='whisper-1',
+                    file=f,
+                    language='ko',
+                    prompt=WHISPER_PROMPT,
+                    response_format='json',
+                    temperature=0,
+                )
+            text = (resp.text or '').strip()
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cache_file.write_text(
             json.dumps(
@@ -213,13 +229,17 @@ def now_iso() -> str:
 
 def process(
     work_dir: Path,
-    client: OpenAI,
+    client: OpenAI | None,
     *,
     limit: int | None,
     use_cache: bool,
+    local_model: Any = None,
 ) -> list[ComparisonRow]:
     logs = load_logs(work_dir)
-    recognition_logs = [l for l in logs if l.get('kind') == 'recognition']
+    # 구 스키마: kind='recognition'. 신 스키마(v1.0.1+): kind='ok'|'fail'
+    recognition_logs = [
+        l for l in logs if l.get('kind') in ('recognition', 'ok', 'fail')
+    ]
     print(
         f'[info] 전체 로그 {len(logs)}건 중 recognition {len(recognition_logs)}건 대상',
         file=sys.stderr,
@@ -235,13 +255,18 @@ def process(
     for log in recognition_logs:
         log_id = log.get('id') or ''
         chrome_text = (log.get('rawText') or '').strip()
+        # audio/{log.id}.webm 형식으로 저장됨 (audioFileId 아님)
         audio_path = find_audio_file(work_dir, log_id)
 
         whisper_text = ''
         if audio_path is not None:
             with_audio += 1
             t = transcribe_whisper(
-                client, audio_path, use_cache=use_cache, log_id=log_id
+                client,
+                audio_path,
+                use_cache=use_cache,
+                log_id=log_id,
+                local_model=local_model,
             )
             whisper_text = (t or '').strip()
             processed += 1
@@ -294,14 +319,17 @@ def write_md(rows: list[ComparisonRow], out_path: Path, source: str) -> None:
 
     # 파서 결과 기준
     chrome_success = sum(1 for r in rows if r.parsed_field)
-    status_fail = sum(1 for r in rows if r.status == 'error')
+    # 신 스키마: status='accepted'|'rejected' / 구 스키마: 'error'|'warn'
+    status_fail = sum(
+        1 for r in rows if r.status in ('error', 'rejected')
+    )
     status_warn = sum(1 for r in rows if r.status == 'warn')
 
     # Whisper 기준 잠재적 구제 건수: Chrome 파싱 실패 + Whisper 전사가 더 상식적
     potential_rescue = [
         r
         for r in disagree
-        if r.status in ('error', 'warn') and r.whisper_text
+        if r.status in ('error', 'warn', 'rejected') and r.whisper_text
     ]
 
     lines: list[str] = []
@@ -433,19 +461,45 @@ def main() -> int:
     parser.add_argument(
         '--no-cache', action='store_true', help='whisper-cache 무시하고 재호출'
     )
+    parser.add_argument(
+        '--local',
+        action='store_true',
+        help='faster-whisper 로컬 실행 (OpenAI API 미사용)',
+    )
+    parser.add_argument(
+        '--model',
+        default='small',
+        help='로컬 모델 크기 (tiny/base/small/medium/large-v3). 기본 small',
+    )
     args = parser.parse_args()
-
-    load_dotenv(SECRETS_ENV)
-    api_key = os.environ.get('OPENAI_API_KEY')
-    if not api_key:
-        print(f'[error] OPENAI_API_KEY 없음 ({SECRETS_ENV})', file=sys.stderr)
-        return 1
 
     if not args.source.exists():
         print(f'[error] 입력 경로 없음: {args.source}', file=sys.stderr)
         return 1
 
-    client = OpenAI(api_key=api_key)
+    client: OpenAI | None = None
+    local_model: Any = None
+
+    if args.local:
+        from faster_whisper import WhisperModel
+
+        print(
+            f'[info] faster-whisper 로컬 실행: model={args.model}, device=cpu, compute_type=int8',
+            file=sys.stderr,
+        )
+        local_model = WhisperModel(
+            args.model, device='cpu', compute_type='int8'
+        )
+    else:
+        load_dotenv(SECRETS_ENV)
+        api_key = os.environ.get('OPENAI_API_KEY')
+        if not api_key:
+            print(
+                f'[error] OPENAI_API_KEY 없음 ({SECRETS_ENV})', file=sys.stderr
+            )
+            return 1
+        client = OpenAI(api_key=api_key)
+
     work_dir = unpack_zip(args.source)
 
     SHARED_DIR.mkdir(parents=True, exist_ok=True)
@@ -456,6 +510,7 @@ def main() -> int:
         client,
         limit=args.limit,
         use_cache=not args.no_cache,
+        local_model=local_model,
     )
 
     date_tag = datetime.now().strftime('%Y%m%d')
