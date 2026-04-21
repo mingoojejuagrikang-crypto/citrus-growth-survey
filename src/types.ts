@@ -384,6 +384,8 @@ export interface SurveyState {
 export interface VoiceState {
   sttStatus: SttState;
   isTtsSpeaking: boolean;
+  /** F030: 현재 TTS로 재생 중인 텍스트. self-capture 필터에서 사용. */
+  currentTtsText: string | null;
   pendingField: string | null;
   pendingValue: string | null;
   interimText: string;

@@ -12,6 +12,7 @@
  */
 
 import type { TtsOptions } from '../types.js';
+import { voiceStore } from '../store/VoiceStore.js';
 
 // ─────────────────────────────────────────────
 // 상수
@@ -180,6 +181,10 @@ export class TtsService {
     if (!this._isSupported) return;
     if (!text.trim()) return;
 
+    // F030: self-capture 필터를 위해 재생 텍스트를 스토어에 기록
+    // iOS의 50ms setTimeout보다 먼저 설정해야 지연 구간 내 transcript도 필터 가능
+    voiceStore.setCurrentTtsText(text);
+
     // 이전 발화 취소
     window.speechSynthesis.cancel();
 
@@ -195,11 +200,14 @@ export class TtsService {
 
   /**
    * 현재 발화를 즉시 취소합니다.
+   * F030: barge-in 시 현재 TTS를 끊고 새 발화를 준비할 때 사용합니다.
    */
   cancel(): void {
     if (!this._isSupported) return;
     window.speechSynthesis.cancel();
     this._isSpeaking = false;
+    // F030: self-capture 필터 텍스트 해제
+    voiceStore.setCurrentTtsText(null);
   }
 
   // ── 내부 메서드 ──
@@ -232,11 +240,15 @@ export class TtsService {
 
     utt.onend = () => {
       this._isSpeaking = false;
+      // F030: TTS 재생 완료 → self-capture 필터 텍스트 해제
+      voiceStore.setCurrentTtsText(null);
       this.onEnd?.();
     };
 
     utt.onerror = () => {
       this._isSpeaking = false;
+      // F030: TTS 오류 종료 → self-capture 필터 텍스트 해제
+      voiceStore.setCurrentTtsText(null);
       this.onEnd?.();
     };
 
