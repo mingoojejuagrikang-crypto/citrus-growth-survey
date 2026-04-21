@@ -1083,21 +1083,25 @@ export class SurveyInputPage {
       /**
        * 에코 판정 기준 (false positive를 최소화하기 위해 보수적으로 설정):
        * 1. 완전 일치
-       * 2. transcript가 TTS 텍스트에 포함되고 transcript 길이가 TTS의 70% 이상
-       * 3. TTS 텍스트가 transcript에 포함되고 TTS 길이가 transcript의 70% 이상
+       * 2. (긴 문자열에만) transcript가 TTS 텍스트에 포함되고 transcript 길이가 TTS의 70% 이상
+       * 3. (긴 문자열에만) TTS 텍스트가 transcript에 포함되고 TTS 길이가 transcript의 70% 이상
        *
-       * 70% 임계값 선정 근거: Safari STT는 무음 경계를 잘못 잘라 단어 일부가 누락되거나
-       * 에코에 잡음이 섞여 길이가 달라질 수 있음. 지나치게 낮으면 짧은 값 발화("255.5")가
-       * 필터될 위험이 있고, 지나치게 높으면 에코가 통과할 위험이 있음.
-       * 실제 예: TTS "횡경155.5" vs transcript "횡경155.5" → 완전일치 ✓
-       *          TTS "횡경155.5" vs transcript "255.5" → 포함 불일치 ✓(통과)
-       *          TTS "횡경155.5" vs transcript "당도10" → 포함 불일치 ✓(통과)
+       * 안전 가드: a 또는 b가 5자 미만인 짧은 숫자값(tts.valueOnly 모드 등)이면
+       * substring 매칭을 비활성화하고 exact match만 사용합니다.
+       * 이유: "200"(3자) 같은 짧은 발화가 "2000"(TTS "200.0")의 substring으로 오탐될 위험 방지.
+       *
+       * 실제 예:
+       *   TTS "횡경1555" vs "2555"   → 포함 불일치 ✓(통과, 사용자 수정 발화)
+       *   TTS "횡경1555" vs "횡경1555" → 완전일치 → 에코 ✓
+       *   TTS "2555"(valueOnly) vs "200" → min-length 가드 → exact match만 → 통과 ✓
        */
+      const MIN_SUBSTRING_LEN = 5;
+      const canUseSubstring = a.length >= MIN_SUBSTRING_LEN && b.length >= MIN_SUBSTRING_LEN;
       const isEcho =
         (a.length > 0 && b.length > 0) && (
           a === b
-          || (b.includes(a) && a.length >= b.length * 0.7)
-          || (a.includes(b) && b.length >= a.length * 0.7)
+          || (canUseSubstring && b.includes(a) && a.length >= b.length * 0.7)
+          || (canUseSubstring && a.includes(b) && b.length >= a.length * 0.7)
         );
 
       if (isEcho) {
@@ -1504,7 +1508,9 @@ export class SurveyInputPage {
       if (this.ttsEnabled) this.ttsService?.speak('음성 입력 종료');
     } else {
       this.ttsService?.unlock();
-      this.sttService.start();
+      // F032: 오디오 녹음이 활성화된 경우에만 getUserMedia 스트림 확보 요청
+      // Android Chrome에서 getUserMedia + SpeechRecognition 동시 마이크 점유 충돌 방지
+      this.sttService.start({ captureAudio: this.audioRecordEnabled });
       this.isVoiceActive = true;
       this.updateVoiceBtnUI(true);
       if (this.ttsEnabled) this.ttsService?.speak('음성 입력 시작');

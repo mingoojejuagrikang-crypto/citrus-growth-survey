@@ -167,8 +167,13 @@ export class SttService {
    * 이미 실행 중이면 아무 작업도 하지 않습니다.
    * iOS 홈화면 PWA(standalone 모드)에서는 SpeechRecognition이 동작하지 않으므로
    * 즉시 'ios-standalone' 에러 코드를 emitError하고 반환합니다.
+   *
+   * @param options.captureAudio true 이면 MediaRecorder 재사용을 위해 getUserMedia 스트림을 미리 확보합니다.
+   *   false(기본값)이면 SpeechRecognition이 자체적으로 마이크 권한을 요청합니다.
+   *   Android Chrome에서는 getUserMedia + SpeechRecognition 동시 마이크 점유 충돌이 발생하므로
+   *   오디오 녹음이 불필요한 경우 반드시 false(기본값)를 사용해야 합니다. (F032)
    */
-  start(): void {
+  start(options: { captureAudio?: boolean } = {}): void {
     if (isIOSStandalone()) {
       this._emitError('ios-standalone');
       return;
@@ -185,17 +190,23 @@ export class SttService {
     this._isRunning = true;
     this._emitState('listening');
 
-    // 마이크 권한 획득 → STT 시작
-    this._ensureStream()
-      .then(() => {
-        this._startRecognition();
-      })
-      .catch((err: unknown) => {
-        this._isRunning = false;
-        this._emitState('idle');
-        const msg = err instanceof Error ? err.message : String(err);
-        this._emitError(`마이크 권한 획득 실패: ${msg}`);
-      });
+    if (options.captureAudio) {
+      // 오디오 녹음 활성화 시: getUserMedia로 스트림 먼저 확보 → STT 시작
+      this._ensureStream()
+        .then(() => {
+          this._startRecognition();
+        })
+        .catch((err: unknown) => {
+          this._isRunning = false;
+          this._emitState('idle');
+          const msg = err instanceof Error ? err.message : String(err);
+          this._emitError(`마이크 권한 획득 실패: ${msg}`);
+        });
+    } else {
+      // 오디오 녹음 불필요 시: SpeechRecognition이 자체적으로 마이크 권한 요청
+      // Android Chrome에서 getUserMedia와 SpeechRecognition 동시 마이크 점유 충돌 방지
+      this._startRecognition();
+    }
   }
 
   /**
