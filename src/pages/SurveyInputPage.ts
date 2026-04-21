@@ -1063,6 +1063,79 @@ export class SurveyInputPage {
     const t0 = event.t0;
     const asrMs = event.asrMs;
 
+    // ─────────────────────────────────────────────
+    // F030: TTS self-capture 필터 (PRE-step)
+    // TTS 재생 중에 마이크로 되먹힌 자기 발화를 감지하여 무시합니다.
+    // ─────────────────────────────────────────────
+    const voiceState = voiceStore.getState();
+    const isTtsPlaying = voiceState.isTtsSpeaking;
+    const currentTtsText = voiceState.currentTtsText;
+
+    if (isTtsPlaying && currentTtsText) {
+      /**
+       * 정규화: 공백·구두점 제거 후 소문자 비교.
+       * 한국어는 대소문자 없지만 toLowerCase()는 무해하므로 유지.
+       */
+      const normalize = (s: string): string => s.replace(/[\s.,!?]/g, '').toLowerCase();
+      const a = normalize(event.transcript);
+      const b = normalize(currentTtsText);
+
+      /**
+       * 에코 판정 기준 (false positive를 최소화하기 위해 보수적으로 설정):
+       * 1. 완전 일치
+       * 2. transcript가 TTS 텍스트에 포함되고 transcript 길이가 TTS의 70% 이상
+       * 3. TTS 텍스트가 transcript에 포함되고 TTS 길이가 transcript의 70% 이상
+       *
+       * 70% 임계값 선정 근거: Safari STT는 무음 경계를 잘못 잘라 단어 일부가 누락되거나
+       * 에코에 잡음이 섞여 길이가 달라질 수 있음. 지나치게 낮으면 짧은 값 발화("255.5")가
+       * 필터될 위험이 있고, 지나치게 높으면 에코가 통과할 위험이 있음.
+       * 실제 예: TTS "횡경155.5" vs transcript "횡경155.5" → 완전일치 ✓
+       *          TTS "횡경155.5" vs transcript "255.5" → 포함 불일치 ✓(통과)
+       *          TTS "횡경155.5" vs transcript "당도10" → 포함 불일치 ✓(통과)
+       */
+      const isEcho =
+        (a.length > 0 && b.length > 0) && (
+          a === b
+          || (b.includes(a) && a.length >= b.length * 0.7)
+          || (a.includes(b) && b.length >= a.length * 0.7)
+        );
+
+      if (isEcho) {
+        // 로그만 저장하고 처리하지 않음 (분석용)
+        if (this.voiceLogEnabled) {
+          const now = new Date().toISOString();
+          const storeStateForLog = surveyStore.getState();
+          VoiceLogService.saveLog({
+            ts: now,
+            kind: 'ok',
+            rawText: event.transcript,
+            alternatives: event.alternatives ?? [],
+            parse: null,
+            status: 'skipped',
+            message: '(TTS self-capture 필터됨)',
+            audioFileId: null,
+            timing: {
+              asrMs,
+              parseMs: 0,
+              ttsCallMs: 0,
+              ttsStartMs: 0,
+              saveLogMs: 0,
+            },
+            session: storeStateForLog.sessionFields
+              ? `${storeStateForLog.sessionFields.surveyDate}_${storeStateForLog.sessionFields.farmerName}`
+              : undefined,
+            device: collectDeviceInfo(),
+          }).catch(() => { /* 로그 저장 실패 무시 */ });
+        }
+        return;
+      }
+
+      // 에코가 아닌 경우(사용자 실제 발화): 현재 TTS를 끊고 즉시 처리
+      // (예: 재생 중인 "횡경 155.5"를 끊고 "255.5" 수정 발화 처리)
+      this.ttsService?.cancel();
+    }
+    // ─────────────────────────────────────────────
+
     // activeFields 목록 (auto 타입 제외)
     const activeFieldKeys =
       this.surveyType === 'growth'

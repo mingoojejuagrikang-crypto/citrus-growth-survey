@@ -15,6 +15,7 @@ import type { VoiceState, SttState, ParseResult } from '../types.js';
 const initialVoiceState: VoiceState = {
   sttStatus: 'idle',
   isTtsSpeaking: false,
+  currentTtsText: null,
   pendingField: null,
   pendingValue: null,
   interimText: '',
@@ -89,6 +90,17 @@ class VoiceStore extends Observable<VoiceState> {
   }
 
   /**
+   * F030: 현재 TTS로 재생 중인 텍스트를 설정합니다.
+   * TtsService.speak() 진입 시 set, utterance.onend/onerror 시 null로 clear합니다.
+   * self-capture 필터(handleSttResult)에서 transcript와 비교에 사용됩니다.
+   *
+   * @param text 재생 중인 TTS 텍스트, 재생 종료 시 null
+   */
+  setCurrentTtsText(text: string | null): void {
+    this.setState({ currentTtsText: text });
+  }
+
+  /**
    * 인식 오류 메시지를 설정합니다.
    *
    * @param msg 오류 메시지 또는 null
@@ -103,6 +115,7 @@ class VoiceStore extends Observable<VoiceState> {
 
   /**
    * TTS 에코 완료 후 pending 상태를 초기화합니다.
+   * F030: currentTtsText도 함께 초기화합니다 (iOS onend 미발화 시 안전망).
    */
   clearPending(): void {
     this.setState({
@@ -110,6 +123,7 @@ class VoiceStore extends Observable<VoiceState> {
       pendingValue: null,
       isCorrection: false,
       isTtsSpeaking: false,
+      currentTtsText: null,
     });
   }
 }
