@@ -110,8 +110,15 @@ export class TtsService {
    *
    * @param text 발화할 텍스트
    * @param options TTS 옵션 (rate, pitch, volume, lang)
+   * @param callbacks 퍼-콜 콜백 (F023 타이밍 계측용)
+   *   - onStarted(ts): utterance.onstart 시각(performance.now())을 전달
+   *     기존 전역 onStart 콜백보다 먼저 호출됩니다.
    */
-  speak(text: string, options?: TtsOptions): void {
+  speak(
+    text: string,
+    options?: TtsOptions,
+    callbacks?: { onStarted?: (ts: number) => void },
+  ): void {
     if (!this._isSupported) return;
     if (!text.trim()) return;
 
@@ -121,10 +128,10 @@ export class TtsService {
     if (this._isIOS) {
       // iOS Safari: cancel() 후 즉시 speak()하면 발화가 시작 안 되는 버그 대응
       setTimeout(() => {
-        this._doSpeak(text, options);
+        this._doSpeak(text, options, callbacks);
       }, IOS_CANCEL_DELAY_MS);
     } else {
-      this._doSpeak(text, options);
+      this._doSpeak(text, options, callbacks);
     }
   }
 
@@ -144,8 +151,13 @@ export class TtsService {
    *
    * @param text 발화할 텍스트
    * @param options TTS 옵션
+   * @param callbacks 퍼-콜 콜백 (F023 타이밍 계측용)
    */
-  private _doSpeak(text: string, options?: TtsOptions): void {
+  private _doSpeak(
+    text: string,
+    options?: TtsOptions,
+    callbacks?: { onStarted?: (ts: number) => void },
+  ): void {
     const utt = new SpeechSynthesisUtterance(text);
 
     utt.lang = options?.lang ?? DEFAULT_LANG;
@@ -155,6 +167,8 @@ export class TtsService {
 
     utt.onstart = () => {
       this._isSpeaking = true;
+      // F023: 퍼-콜 onStarted 콜백 — 전역 onStart 이전에 호출
+      callbacks?.onStarted?.(performance.now());
       this.onStart?.();
     };
 

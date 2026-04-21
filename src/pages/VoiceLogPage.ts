@@ -283,6 +283,31 @@ export class VoiceLogPage {
   // ─────────────────────────────────────────────
 
   /**
+   * timing 필드가 있는 로그들의 평균 asrMs / ttsStartMs를 한 줄로 반환합니다.
+   * F023 타이밍 요약 (날짜 상세 헤더에 표시).
+   *
+   * @param logs VoiceLog 목록
+   * @returns HTML 문자열 (없으면 빈 문자열)
+   */
+  private renderTimingStats(logs: VoiceLog[]): string {
+    const timedLogs = logs.filter((l) => l.timing !== undefined);
+    if (timedLogs.length === 0) return '';
+
+    const avgAsr = timedLogs.reduce((s, l) => s + (l.timing?.asrMs ?? 0), 0) / timedLogs.length;
+    const ttsLogs = timedLogs.filter((l) => (l.timing?.ttsStartMs ?? 0) > 0);
+    const avgTtsStart = ttsLogs.length > 0
+      ? ttsLogs.reduce((s, l) => s + (l.timing?.ttsStartMs ?? 0), 0) / ttsLogs.length
+      : 0;
+
+    const asrStr = avgAsr > 0 ? `ASR ${avgAsr.toFixed(0)}ms` : '';
+    const ttsStr = avgTtsStart > 0 ? `TTS start ${avgTtsStart.toFixed(0)}ms` : '';
+    const parts = [asrStr, ttsStr].filter(Boolean).join(' · ');
+    if (!parts) return '';
+
+    return `<span class="vl-timing-avg" title="F023 파이프라인 평균 (계측 건: ${timedLogs.length}/${logs.length})">${escapeHtml(parts)}</span>`;
+  }
+
+  /**
    * 특정 날짜의 로그 상세 목록을 렌더링합니다.
    *
    * @param date YYYY-MM-DD 형식 날짜
@@ -297,10 +322,12 @@ export class VoiceLogPage {
       return;
     }
 
+    const timingHtml = this.renderTimingStats(logs);
     const items = logs.map((log) => this.renderLogItem(log)).join('');
     section.innerHTML = `
       <div class="vl-detail-header">
         <span class="vl-detail-title">${escapeHtml(date)} 로그 상세</span>
+        ${timingHtml}
       </div>
       <div class="vl-log-list">${items}</div>
     `;
@@ -794,11 +821,23 @@ export class VoiceLogPage {
       .vl-detail-header {
         padding: 10px 16px 4px;
         border-bottom: 1px solid var(--border, #e0e0e0);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
       }
       .vl-detail-title {
         font-size: 13px;
         font-weight: 600;
         color: var(--text-secondary, #555);
+      }
+      .vl-timing-avg {
+        font-size: 11px;
+        color: #5c6bc0;
+        background: #e8eaf6;
+        padding: 2px 7px;
+        border-radius: 10px;
+        font-variant-numeric: tabular-nums;
       }
       .vl-detail-empty {
         padding: 20px 16px;
