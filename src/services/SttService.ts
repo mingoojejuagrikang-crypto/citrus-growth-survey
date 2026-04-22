@@ -45,8 +45,8 @@ interface SpeechRecognitionInstance extends EventTarget {
 /** 인식 언어 기본값 */
 const DEFAULT_LANG = 'ko-KR';
 
-/** onend 후 재시작 대기 시간 (ms) */
-const RESTART_DELAY_MS = 300;
+/** onend 후 재시작 대기 시간 (ms) — F035: 300 → 100ms (연속 발화 응답성 개선) */
+const RESTART_DELAY_MS = 100;
 
 /** iOS Safari UA 판별 정규식 */
 const IOS_UA_REGEX = /iPad|iPhone|iPod/;
@@ -375,6 +375,9 @@ export class SttService {
         if (alt) alternatives.push(alt);
       }
 
+      // F035-R2: endTs — final event.timeStamp 절대값 (비정상이면 undefined)
+      const endTs: number | undefined = eventTs > 0 ? eventTs : undefined;
+
       const resultEvent: SttResultEvent = {
         transcript,
         isFinal: true,
@@ -382,6 +385,7 @@ export class SttService {
         confidence,
         t0,
         asrMs,
+        endTs,
       };
 
       this.onResult?.(resultEvent);

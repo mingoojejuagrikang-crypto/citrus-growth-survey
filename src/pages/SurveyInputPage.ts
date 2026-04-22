@@ -1066,6 +1066,9 @@ export class SurveyInputPage {
     // F023: _handleResult 진입 시각 (SttService에서 전달된 t0) 및 asrMs
     const t0 = event.t0;
     const asrMs = event.asrMs;
+    // F035-R2: 음성 입력 종료 기준 절대 타임스탬프.
+    // event.endTs가 있으면 그 값(final event.timeStamp), 없으면 핸들러 진입 시각 t0를 fallback으로 사용.
+    const speechEndTs = event.endTs ?? t0;
 
     // ─────────────────────────────────────────────
     // F030: TTS self-capture 필터 (PRE-step)
@@ -1128,6 +1131,7 @@ export class SurveyInputPage {
               ttsCallMs: 0,
               ttsStartMs: 0,
               saveLogMs: 0,
+              speechEndToTtsStartMs: 0,  // F035-R2: TTS self-capture — TTS 없음
             },
             session: storeStateForLog.sessionFields
               ? `${storeStateForLog.sessionFields.surveyDate}_${storeStateForLog.sessionFields.farmerName}`
@@ -1237,6 +1241,7 @@ export class SurveyInputPage {
             ttsCallMs: ttsCallMsA1,
             ttsStartMs: 0,
             saveLogMs: saveLogMsA1,
+            speechEndToTtsStartMs: 0,  // F035-R2: A1 — onStarted 없음 (defer to commit 4)
           },
           session: storeState.sessionFields
             ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
@@ -1308,11 +1313,13 @@ export class SurveyInputPage {
       // ttsStartMs — utterance.onstart 콜백 기반. 2000ms fallback 후 0 유지.
       const ttsCallMsA = this.ttsEnabled ? performance.now() - t0 : 0;
       let ttsStartMsA = 0;
+      let speechEndToTtsStartMsA = 0;  // F035-R2: speechEndTs ~ TTS onstart 체감 지연
       const ttsStartPromiseA = new Promise<void>((resolve) => {
         if (this.ttsEnabled && this.ttsService) {
           this.ttsService.speak(ttsText, undefined, {
             onStarted: (ts: number) => {
               ttsStartMsA = ts - t0;
+              speechEndToTtsStartMsA = ts - speechEndTs;  // F035-R2
               resolve();
             },
           });
@@ -1365,6 +1372,7 @@ export class SurveyInputPage {
                 ttsCallMs: ttsCallMsA,
                 ttsStartMs: ttsStartMsA,
                 saveLogMs: saveLogMsA,
+                speechEndToTtsStartMs: speechEndToTtsStartMsA,  // F035-R2
               },
               // F025: 수락에 사용된 alternative 인덱스 (0 = primary rawText)
               selectedAltIndex: result.selectedAltIndex ?? 0,
@@ -1451,11 +1459,13 @@ export class SurveyInputPage {
       // F023: ttsCallMs — speak() 호출 직전 시각 기준
       const ttsCallMsB = this.ttsEnabled ? performance.now() - t0 : 0;
       let ttsStartMsB = 0;
+      let speechEndToTtsStartMsB = 0;  // F035-R2: speechEndTs ~ TTS onstart 체감 지연
       const ttsStartPromiseB = new Promise<void>((resolve) => {
         if (this.ttsEnabled && this.ttsService) {
           this.ttsService.speak(ttsText, undefined, {
             onStarted: (ts: number) => {
               ttsStartMsB = ts - t0;
+              speechEndToTtsStartMsB = ts - speechEndTs;  // F035-R2
               resolve();
             },
           });
@@ -1504,6 +1514,7 @@ export class SurveyInputPage {
                 ttsCallMs: ttsCallMsB,
                 ttsStartMs: ttsStartMsB,
                 saveLogMs: saveLogMsB,
+                speechEndToTtsStartMs: speechEndToTtsStartMsB,  // F035-R2
               },
               session: storeState.sessionFields
                 ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
@@ -1539,11 +1550,13 @@ export class SurveyInputPage {
     // F023: fail 브랜치에서 TTS 없음 → ttsCallMs/ttsStartMs = 0
     const ttsCallMsC = this.ttsEnabled ? performance.now() - t0 : 0;
     let ttsStartMsC = 0;
+    let speechEndToTtsStartMsC = 0;  // F035-R2: speechEndTs ~ TTS onstart 체감 지연
     const ttsStartPromiseC = new Promise<void>((resolve) => {
       if (this.ttsEnabled && this.ttsService) {
         this.ttsService.speak(failTts, undefined, {
           onStarted: (ts: number) => {
             ttsStartMsC = ts - t0;
+            speechEndToTtsStartMsC = ts - speechEndTs;  // F035-R2
             resolve();
           },
         });
@@ -1591,6 +1604,7 @@ export class SurveyInputPage {
               ttsCallMs: ttsCallMsC,
               ttsStartMs: ttsStartMsC,
               saveLogMs: saveLogMsC,
+              speechEndToTtsStartMs: speechEndToTtsStartMsC,  // F035-R2
             },
             // F025: outOfRange rejected는 -1, 일반 실패는 undefined
             selectedAltIndex: result.outOfRange ? -1 : undefined,

@@ -122,12 +122,15 @@ export interface VoiceParseResult {
  * 파이프라인 단계별 소요 시간 정보 (F023 타이밍 계측).
  * 모든 필드는 밀리초(ms) 단위. 해당 없는 단계는 0.
  *
- * - asrMs:      SpeechRecognition final event → _handleResult 진입 시각 차
- * - parseMs:    parse() 함수 실행 시간
- * - ttsCallMs:  _handleResult 진입 ~ ttsService.speak() 호출 시각 차
- * - ttsStartMs: _handleResult 진입 ~ utterance.onstart 콜백 시각 차
- * - saveLogMs:  _handleResult 진입 ~ VoiceLogService.saveLog() 호출 직전 시각 차
- *               (실제 IDB 쓰기 완료까지가 아닌 호출 시점 기준 — 파이프라인 오버헤드 측정용)
+ * - asrMs:                SpeechRecognition final event → _handleResult 진입 시각 차
+ * - parseMs:              parse() 함수 실행 시간
+ * - ttsCallMs:            _handleResult 진입 ~ ttsService.speak() 호출 시각 차
+ * - ttsStartMs:           _handleResult 진입 ~ utterance.onstart 콜백 시각 차
+ * - saveLogMs:            _handleResult 진입 ~ VoiceLogService.saveLog() 호출 직전 시각 차
+ *                         (실제 IDB 쓰기 완료까지가 아닌 호출 시점 기준 — 파이프라인 오버헤드 측정용)
+ * - speechEndToTtsStartMs: 음성 입력 종료(final event.timeStamp) ~ TTS utterance.onstart 체감 지연
+ * - firstInterimMs:       첫 interim result 수신까지의 지연 (측정 불가 시 0)
+ * - bargeInRecoveryMs:    barge-in 시 TTS cancel → 새 speak.onstart까지 복구 시간
  */
 export interface TimingInfo {
   asrMs: number;      // SpeechRecognition final event → _handleResult 진입
@@ -135,6 +138,12 @@ export interface TimingInfo {
   ttsCallMs: number;  // _handleResult 진입 ~ speak() 호출
   ttsStartMs: number; // _handleResult 진입 ~ utterance.onstart
   saveLogMs: number;  // _handleResult 진입 ~ saveLog() 호출
+  /** F035-R2: 음성 입력 종료(final event.timeStamp) ~ TTS utterance.onstart 체감 지연 */
+  speechEndToTtsStartMs?: number;
+  /** F035-R2: 첫 interim result 수신까지의 지연 (측정 불가 시 0) */
+  firstInterimMs?: number;
+  /** F035-R2: barge-in 시 TTS cancel → 새 speak.onstart까지 복구 시간 */
+  bargeInRecoveryMs?: number;
 }
 
 /**
@@ -305,6 +314,8 @@ export interface LogDateStat {
  * SttService.onResult 콜백 이벤트.
  * t0: _handleResult 진입 시각 (performance.now())
  * asrMs: SpeechRecognition final event.timeStamp ~ t0 차이 (0이면 측정 불가)
+ * endTs: SpeechRecognition final event.timeStamp (performance.now() 기준 절대값, F035-R2)
+ *        측정 불가 시 undefined — 수신자는 t0를 fallback으로 사용합니다.
  */
 export interface SttResultEvent {
   transcript: string;           // rawText
@@ -313,6 +324,8 @@ export interface SttResultEvent {
   confidence: number;
   t0: number;                   // performance.now() at _handleResult entry (F023)
   asrMs: number;                // browser event.timeStamp → t0 elapsed ms (F023)
+  /** F035-R2: final event.timeStamp (절대값). 비정상이면 undefined. */
+  endTs?: number;
 }
 
 export type SttState = 'idle' | 'listening' | 'processing';
