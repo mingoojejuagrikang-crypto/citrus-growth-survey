@@ -1439,12 +1439,13 @@ export class SurveyInputPage {
       }
 
       const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
-      // F034: Two-step 모드에서 온 경우 값만 TTS (항목명은 단계 1에서 이미 확인)
-      // Two-step이 아닌 경우(기존 isCorrection 수정 모드)는 "수정 항목 값" 유지
-      const fromTwoStep = (awaitingValueFor !== null);
-      const ttsText = fromTwoStep
-        ? displayValue                          // "155.5"만
-        : `수정 ${fieldLabel} ${displayValue}`; // 기존: "수정 횡경 155.5"
+      // F035-이슈#2: "수정" TTS 접두어는 사용자가 실제로 수정 접두어를 발화한 경우에만 사용
+      // (기존 fromTwoStep=awaitingValueFor!==null 기준은 5초 타임아웃 후 값 발화 시
+      //  false가 되어 의도치 않게 "수정 X Y"로 leak되는 버그가 있었음)
+      const userSaidCorrection = result.hasCorrectionPrefix === true;
+      const ttsText = userSaidCorrection
+        ? `수정 ${fieldLabel} ${displayValue}` // 사용자가 "수정" 발화 → "수정 횡경 155.5"
+        : displayValue;                          // 기본: 값만 TTS (two-step 연속 / bare-number 이어쓰기)
       voiceStore.setEchoText(ttsText);
 
       // F023: ttsCallMs — speak() 호출 직전 시각 기준
