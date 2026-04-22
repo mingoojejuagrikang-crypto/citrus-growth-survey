@@ -132,6 +132,36 @@ describe('parser: R3 활성 필드 점수 보너스', () => {
     `score가 1.0 초과하지 않음 — 실제: ${rWith.score}`);
 });
 
+describe('parser: SKIP_COMMANDS 감지 (F035-이슈#4)', () => {
+  // 정확히 일치하는 스킵 명령어
+  const r1 = parse('다음', ctx);
+  assert(r1.isSkipCommand === true,
+    `parse("다음") isSkipCommand === true — 실제: ${String(r1.isSkipCommand)}`);
+
+  const r2 = parse('패스', ctx);
+  assert(r2.isSkipCommand === true,
+    `parse("패스") isSkipCommand === true — 실제: ${String(r2.isSkipCommand)}`);
+
+  const r3 = parse('스킵', ctx);
+  assert(r3.isSkipCommand === true,
+    `parse("스킵") isSkipCommand === true — 실제: ${String(r3.isSkipCommand)}`);
+
+  const r4 = parse('건너뛰기', ctx);
+  assert(r4.isSkipCommand === true,
+    `parse("건너뛰기") isSkipCommand === true — 실제: ${String(r4.isSkipCommand)}`);
+
+  // 부분 매칭은 스킵 아님
+  const r5 = parse('다음은 뭐예요', ctx);
+  assert(!r5.isSkipCommand,
+    `parse("다음은 뭐예요") isSkipCommand falsy — 실제: ${String(r5.isSkipCommand)}`);
+
+  // 스킵 명령의 필드/값은 null
+  assert(r1.field === null,
+    `parse("다음") field === null — 실제: "${r1.field}"`);
+  assert(r1.method === 'skip-command',
+    `parse("다음") method === 'skip-command' — 실제: "${r1.method}"`);
+});
+
 // ─────────────────────────────────────────────
 // 결과 출력
 // ─────────────────────────────────────────────

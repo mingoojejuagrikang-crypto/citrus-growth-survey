@@ -13,7 +13,7 @@
  */
 
 import { getDB } from '../db/index.js';
-import type { AppDefaults } from '../types.js';
+import type { AppDefaults, InputMode } from '../types.js';
 
 // ─────────────────────────────────────────────
 // 상수 — 기본 설정값
@@ -49,6 +49,8 @@ const SETTING_DEFAULTS: Record<string, unknown> = {
   fieldPresets: [],
   activeGrowthPreset: 'default',
   activeQualityPreset: 'default',
+  /** F035-이슈#4: 입력 모드 기본값 — 자유 모드 */
+  inputMode: 'free' as InputMode,
 };
 
 // ─────────────────────────────────────────────

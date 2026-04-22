@@ -11,6 +11,9 @@ export type SyncStatus = 'pending' | 'synced' | 'error';
 
 export type SurveyType = 'growth' | 'quality';
 
+/** F035-이슈#4: 입력 모드 — 자유 모드(기본) 또는 가이드 모드 */
+export type InputMode = 'free' | 'guided';
+
 // ─────────────────────────────────────────────
 // 비대조사 레코드 (GrowthRecord)
 // ─────────────────────────────────────────────
@@ -115,7 +118,7 @@ export interface VoiceParseResult {
   field: string | null;         // 인식된 항목명 (정규화 후)
   value: string | null;         // 인식된 값 (원본 보존)
   score: number;                // 신뢰도 0.0~1.0
-  method: 'alias' | 'exact' | 'normalized' | 'value-only' | 'unknown' | 'alt-fallback';
+  method: 'alias' | 'exact' | 'normalized' | 'value-only' | 'unknown' | 'alt-fallback' | 'skip-command';
 }
 
 /**
@@ -221,7 +224,7 @@ export interface ParseResult {
   value: string | null;               // 인식된 값 (원본 문자열)
   numericValue: number | null;        // 숫자 변환된 값 (숫자 필드인 경우)
   score: number;                      // 신뢰도 0.0~1.0
-  method: 'alias' | 'exact' | 'normalized' | 'value-only' | 'unknown' | 'alt-fallback';
+  method: 'alias' | 'exact' | 'normalized' | 'value-only' | 'unknown' | 'alt-fallback' | 'skip-command';
   isCorrection: boolean;              // 값만 발화한 수정 모드
   warning: string | null;             // 9999 초과 등 경고 메시지
   /** F025: 모든 alternatives를 소진해도 범위 밖인 경우 true */
@@ -233,6 +236,8 @@ export interface ParseResult {
   hasCorrectionPrefix?: boolean;
   /** F034: 항목명만 인식됨 (값 없음). Two-step 모드 진입 신호. */
   isFieldOnly?: boolean;
+  /** F035-이슈#4: 스킵 명령어("다음"/"패스"/"스킵"/"건너뛰기")가 인식되었으면 true */
+  isSkipCommand?: boolean;
 }
 
 // ─────────────────────────────────────────────
@@ -486,6 +491,23 @@ export const FIELD_DATA_TYPES: Readonly<Record<string, FieldDataType>> = {
   coloring:          { type: 'integer' },
   nonDestructive:    { type: 'decimal', places: 1 },
   remark:            { type: 'text' },
+};
+
+// ─────────────────────────────────────────────
+// 가이드 모드 필드 순서 (F035-이슈#4)
+// ─────────────────────────────────────────────
+
+/**
+ * 가이드 모드에서 항목을 안내하는 기본 순서.
+ * GuidedModeController가 getFilledFields()와 조합하여 다음 미입력 항목을 결정합니다.
+ * 과거 기록 분석으로 동적 재정렬하는 GuidedSequenceInferrer가 없을 때 fallback으로 사용됩니다.
+ */
+export const GUIDED_FIELD_SEQUENCE: Readonly<Record<SurveyType, readonly string[]>> = {
+  growth: ['treeNo', 'width', 'height', 'remark'],
+  quality: [
+    'treeNo', 'fruitNo', 'fruitWeight', 'pericarpWeight', 'pericarpThickness',
+    'brix', 'titratableAcidity', 'acidContent', 'coloring', 'nonDestructive', 'remark',
+  ],
 };
 
 // ─────────────────────────────────────────────

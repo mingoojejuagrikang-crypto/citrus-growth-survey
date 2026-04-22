@@ -38,6 +38,9 @@ const SCORE_UNKNOWN = 0.0;
 /** F031: 수정 의도를 나타내는 프리픽스 목록 (lowercase, 트레일링 공백 포함) */
 const CORRECTION_PREFIXES = ['수정 ', '아니 ', '아니야 ', '아니요 '] as const;
 
+/** F035-이슈#4: 가이드 모드 스킵 명령어 목록 (정확히 일치해야 함) */
+const SKIP_COMMANDS: ReadonlySet<string> = new Set(['다음', '패스', '스킵', '건너뛰기']);
+
 // ─────────────────────────────────────────────
 // F025: 범위 검사
 // ─────────────────────────────────────────────
@@ -159,11 +162,29 @@ function matchFieldFromTokens(
 export function parse(rawText: string, context: ParserContext, alternatives: string[] = []): ParseResult {
   const { lastField, activeFields } = context;
 
+  // F035-이슈#4: 스킵 명령 감지 (정확 일치, 대소문자 무시)
+  // normalize() 호출 전에 trim().toLowerCase()로 비교하여 "다음", "패스", "스킵", "건너뛰기" 감지
+  const rawTrimmedLower = rawText.trim().toLowerCase();
+  if (SKIP_COMMANDS.has(rawTrimmedLower)) {
+    return {
+      field: null,
+      value: null,
+      numericValue: null,
+      score: 0,
+      method: 'skip-command',
+      isCorrection: false,
+      hasCorrectionPrefix: false,
+      isFieldOnly: false,
+      isSkipCommand: true,
+      warning: null,
+    };
+  }
+
   // F031: 수정 프리픽스 감지
   // 파서가 이미 모르는 토큰("수정", "아니")을 스킵하므로 필드+값 추출은 정상 동작.
   // 여기서는 플래그만 설정하고, 프리픽스 제거는 하지 않는다.
   let hasCorrectionPrefix = false;
-  const rawLower = rawText.trim().toLowerCase();
+  const rawLower = rawTrimmedLower;
   for (const prefix of CORRECTION_PREFIXES) {
     if (rawLower.startsWith(prefix)) {
       hasCorrectionPrefix = true;

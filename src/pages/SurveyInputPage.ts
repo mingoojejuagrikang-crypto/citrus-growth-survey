@@ -19,7 +19,7 @@
  * - SttService → parser → surveyStore 자동 필드 업데이트
  */
 
-import type { SurveyType, AppDefaults, GrowthRecord, QualityRecord, SessionFields, VoiceState, SurveyState, SttResultEvent } from '../types.js';
+import type { SurveyType, AppDefaults, GrowthRecord, QualityRecord, SessionFields, VoiceState, SurveyState, SttResultEvent, InputMode } from '../types.js';
 import { surveyStore, voiceStore, syncStore } from '../store/index.js';
 import * as SettingsService from '../services/SettingsService.js';
 import * as IndexedDBService from '../services/IndexedDBService.js';
@@ -38,6 +38,7 @@ import { todayString, formatDisplayDate, nowIso } from '../utils/dateUtils.js';
 import { collectDeviceInfo } from '../utils/deviceDetect.js';
 import { formatFieldValue } from '../utils/formatFieldValue.js';
 import { FIELD_DATA_TYPES } from '../types.js';
+import { GuidedModeController } from './GuidedModeController.js';
 
 // ─────────────────────────────────────────────
 // 필드 정의 (비대조사 / 품질조사)
@@ -109,6 +110,12 @@ export class SurveyInputPage {
 
   // 측정값 (Record)
   private fieldValues: Record<string, string> = {};
+
+  // F035-이슈#4: 입력 모드 (기본 자유 모드)
+  private inputMode: InputMode = 'free';
+
+  // F035-이슈#4: 가이드 모드 컨트롤러 인스턴스 (inputMode === 'guided' 일 때만 생성)
+  private guidedController: GuidedModeController | null = null;
 
   // F031/변경1C: 세션 필드 키 집합 (updateSessionFields 라우팅용)
   private static readonly SESSION_FIELD_KEYS = new Set<string>(['farmerName', 'label', 'treatment', 'treeNo']);
@@ -182,6 +189,10 @@ export class SurveyInputPage {
     this.voiceBtnEl = null;
     this.isVoiceActive = false;
 
+    // F035-이슈#4: 가이드 모드 컨트롤러 정리
+    this.guidedController?.stop();
+    this.guidedController = null;
+
     this.unsubscribers.forEach((fn) => fn());
     this.unsubscribers = [];
 
@@ -204,7 +215,10 @@ export class SurveyInputPage {
   private async loadDefaults(): Promise<void> {
     try {
       // mount마다 최신 설정을 로드하여 설정 변경이 즉시 반영되도록 함
-      this.defaults = await SettingsService.getDefaults();
+      [this.defaults, this.inputMode] = await Promise.all([
+        SettingsService.getDefaults(),
+        SettingsService.get<InputMode>('inputMode', 'free'),
+      ]);
       // sessionFields 기본값 적용 (이미 값이 있으면 덮어쓰지 않음)
       if (!this.sessionFields.farmerName && this.defaults.defaultFarmerName) {
         this.sessionFields.farmerName = this.defaults.defaultFarmerName;
@@ -1194,6 +1208,12 @@ export class SurveyInputPage {
 
     const now = new Date().toISOString();
 
+    // ── Branch S: F035-이슈#4 스킵 명령 (가이드 모드에서만 동작) ──
+    if (result.isSkipCommand === true && this.guidedController?.isActive) {
+      this.guidedController.skipCurrent();
+      return;
+    }
+
     // ── Branch A1: F034 항목명만 인식 → Two-step 모드 진입 ──
     if (result.isFieldOnly === true && result.field !== null && result.score >= 0.5) {
       const fieldKey = result.field;
@@ -1398,6 +1418,11 @@ export class SurveyInputPage {
           }
         })();
       }
+
+      // F035-이슈#4: 가이드 모드 — 필드 저장 완료 알림 (Branch A)
+      if (this.guidedController?.isActive) {
+        this.guidedController.onFieldSaved(fieldKey).catch(() => {});
+      }
       return;
     }
 
@@ -1538,6 +1563,11 @@ export class SurveyInputPage {
           }
         })();
       }
+
+      // F035-이슈#4: 가이드 모드 — 필드 저장 완료 알림 (Branch B)
+      if (this.guidedController?.isActive) {
+        this.guidedController.onFieldSaved(fieldKey).catch(() => {});
+      }
       return;
     }
 
@@ -1644,6 +1674,8 @@ export class SurveyInputPage {
       this.sttService.stop();
       this.isVoiceActive = false;
       this.updateVoiceBtnUI(false);
+      // F035-이슈#4: 가이드 모드 일시 중지 (마이크 off)
+      this.guidedController?.stop();
       if (this.ttsEnabled) this.ttsService?.speak('음성 입력 종료');
     } else {
       this.ttsService?.unlock();
@@ -1653,6 +1685,25 @@ export class SurveyInputPage {
       this.isVoiceActive = true;
       this.updateVoiceBtnUI(true);
       if (this.ttsEnabled) this.ttsService?.speak('음성 입력 시작');
+      // F035-이슈#4: 가이드 모드 활성화 (inputMode === 'guided' 일 때만)
+      if (this.inputMode === 'guided' && this.ttsService) {
+        if (!this.guidedController) {
+          this.guidedController = new GuidedModeController(
+            this.surveyType,
+            this.ttsService,
+            () => this.getFilledFieldsGuided(),
+            (fieldKey) => this.speakFieldGuided(fieldKey),
+            () => this.finalizeRowGuided(),
+            () => this.getSessionFieldsForGuide(),
+          );
+        }
+        // TTS "음성 입력 시작" 재생 후 약간 딜레이 후 가이드 시작
+        setTimeout(() => {
+          if (this.guidedController && this.isVoiceActive) {
+            this.guidedController.start();
+          }
+        }, 800);
+      }
     }
   }
 
@@ -1682,6 +1733,173 @@ export class SurveyInputPage {
   // ─────────────────────────────────────────────
   // 유틸리티
   // ─────────────────────────────────────────────
+
+  // ─────────────────────────────────────────────
+  // 가이드 모드 헬퍼 (F035-이슈#4)
+  // ─────────────────────────────────────────────
+
+  /**
+   * 가이드 모드에서 현재 입력된 필드 키 집합을 반환합니다.
+   * treeNo는 sessionFields, fruitNo는 currentRecord, 나머지는 fieldValues/currentRecord에서 확인합니다.
+   *
+   * @returns 입력값이 있는 필드 키 집합
+   */
+  private getFilledFieldsGuided(): Set<string> {
+    const filled = new Set<string>();
+    const storeState = surveyStore.getState();
+
+    // treeNo — sessionFields에 있고 유효한 양수이면 채워진 것으로 판단
+    if (this.sessionFields.treeNo > 0) {
+      filled.add('treeNo');
+    }
+
+    // fruitNo — currentRecord에 있음 (품질조사)
+    const record = storeState.currentRecord as Partial<GrowthRecord>;
+    if (record.fruitNo != null && record.fruitNo > 0) {
+      filled.add('fruitNo');
+    }
+
+    // 측정 필드 — fieldValues (DOM과 동기화된 값) 확인
+    for (const [key, val] of Object.entries(this.fieldValues)) {
+      if (val !== '' && val != null) {
+        filled.add(key);
+      }
+    }
+
+    return filled;
+  }
+
+  /**
+   * 가이드 모드에서 특정 필드를 TTS로 안내하고 awaitingValueFor를 설정합니다.
+   * Branch A1 로직을 재사용합니다.
+   *
+   * @param fieldKey 안내할 필드 키
+   */
+  private speakFieldGuided(fieldKey: string): void {
+    const fieldLabelMap: Record<string, string> = {
+      farmerName: '농가명',
+      label: '라벨',
+      treatment: '처리',
+      treeNo: '조사나무',
+      fruitNo: '조사과실',
+      width: '횡경',
+      height: '종경',
+      fruitWeight: '과중',
+      pericarpWeight: '과피중',
+      pericarpThickness: '과피두께',
+      brix: '당도',
+      titratableAcidity: '적정산도',
+      acidContent: '산함량',
+      coloring: '착색',
+      nonDestructive: '비파괴',
+      remark: '비고',
+    };
+
+    const fieldLabel = fieldLabelMap[fieldKey] ?? fieldKey;
+
+    // A1 경로 재사용: awaitingValueFor 설정 + TTS
+    voiceStore.setAwaitingValueFor(fieldKey);
+    surveyStore.setLastField(fieldKey);
+    voiceStore.setEchoText(fieldLabel);
+
+    if (this.ttsEnabled && this.ttsService) {
+      this.ttsService.speak(fieldLabel);
+    }
+  }
+
+  /**
+   * 가이드 모드에서 현재 행을 저장하고 다음 행 세션 필드를 자동으로 진행합니다.
+   * - 품질조사: fruitNo 증가, 초과 시 treeNo+1 + fruitNo=1 (N=3 fallback)
+   * - 생육조사: treeNo + 1
+   *
+   * @returns RowAdvanceInfo (nextSession 포함)
+   */
+  private async finalizeRowGuided(): Promise<import('./GuidedModeController.js').RowAdvanceInfo> {
+    const MAX_FRUIT_NO = 3; // fallback: 한 나무당 과실 수 (Sheets 과거 기록 분석 미구현 시)
+
+    const sessionFields = this.readSessionFields();
+    const fruitNoInput = this.el?.querySelector<HTMLInputElement>('#session-fruit');
+    const currentFruitNo = parseInt(fruitNoInput?.value ?? '1', 10) || 1;
+
+    // 현재 행 저장 (이상치 경고 무시 — 가이드 모드는 연속 입력 흐름 우선)
+    const recordId = makeRecordId({
+      surveyDate: sessionFields.surveyDate,
+      farmerName: sessionFields.farmerName,
+      label: sessionFields.label,
+      treatment: sessionFields.treatment,
+      treeNo: sessionFields.treeNo,
+      fruitNo: currentFruitNo,
+    });
+    const sessionKey = makeSessionKey(sessionFields);
+    const now = new Date().toISOString();
+    const record = surveyStore.buildRecord(recordId, sessionKey, now);
+    (record as GrowthRecord).fruitNo = currentFruitNo;
+
+    try {
+      await IndexedDBService.saveRecord(this.surveyType, record);
+      syncStore.incrementPending();
+    } catch (err) {
+      // 저장 실패해도 가이드 모드 계속
+      console.error('[GuidedModeController] finalizeRow 저장 실패:', err instanceof Error ? err.message : String(err));
+    }
+
+    // store는 fruitNo만 초기화 (fruitNo reset + 측정값 유지)
+    surveyStore.resetAfterSave();
+    this.clearFruitNumberField();
+    // fieldValues에서 측정 필드 초기화 (다음 행 입력 준비)
+    for (const key of Object.keys(this.fieldValues)) {
+      if (key !== 'fruitNo') {
+        this.fieldValues[key] = '';
+        const inputEl = this.el?.querySelector<HTMLInputElement>(`[data-field-key="${key}"]`);
+        if (inputEl && !(inputEl instanceof HTMLSelectElement)) {
+          inputEl.value = '';
+        }
+      }
+    }
+    // TTS "저장 완료"는 생략 (가이드 모드는 diff TTS만 사용)
+
+    // 다음 행 세션 필드 자동 진행
+    let nextTreeNo = sessionFields.treeNo;
+    let nextFruitNo = currentFruitNo;
+
+    if (this.surveyType === 'quality') {
+      nextFruitNo = currentFruitNo + 1;
+      if (nextFruitNo > MAX_FRUIT_NO) {
+        nextFruitNo = 1;
+        nextTreeNo = sessionFields.treeNo + 1;
+      }
+    } else {
+      // growth: treeNo만 증가
+      nextTreeNo = sessionFields.treeNo + 1;
+    }
+
+    // store + DOM 갱신
+    surveyStore.updateSessionFields({ treeNo: nextTreeNo });
+    this.sessionFields.treeNo = nextTreeNo;
+    const treeSelect = this.el?.querySelector<HTMLSelectElement>('#session-tree');
+    if (treeSelect) treeSelect.value = String(nextTreeNo);
+
+    if (this.surveyType === 'quality' && fruitNoInput) {
+      fruitNoInput.value = String(nextFruitNo);
+    }
+
+    const nextSession = this.getSessionFieldsForGuide();
+    return { nextSession };
+  }
+
+  /**
+   * 가이드 모드 diff 비교를 위한 현재 세션 필드를 반환합니다.
+   *
+   * @returns 세션 필드 Record (treeNo, fruitNo 포함)
+   */
+  private getSessionFieldsForGuide(): Record<string, unknown> {
+    const storeState = surveyStore.getState();
+    const record = storeState.currentRecord as Partial<GrowthRecord>;
+    return {
+      treeNo: this.sessionFields.treeNo,
+      fruitNo: record.fruitNo ?? null,
+    };
+  }
 
   private getActiveFields(): FieldDef[] {
     return this.surveyType === 'growth' ? GROWTH_FIELDS : QUALITY_FIELDS;

@@ -14,7 +14,7 @@
 
 import * as SettingsService from '../services/SettingsService.js';
 import { TtsService } from '../services/TtsService.js';
-import type { AppDefaults } from '../types.js';
+import type { AppDefaults, InputMode } from '../types.js';
 import { showConfirm } from '../components/ConfirmDialog.js';
 import { showToast } from '../utils/toast.js';
 
@@ -49,6 +49,7 @@ export class SettingsPage {
   private gemmaEnabled = false;
   private audioRecordEnabled = false;
   private voiceLogEnabled = true;
+  private inputMode: InputMode = 'free';
   private isSaving = false;
   private newFarmerInput: HTMLInputElement | null = null;
   private newLabelInput: HTMLInputElement | null = null;
@@ -109,12 +110,14 @@ export class SettingsPage {
         this.gemmaEnabled,
         this.audioRecordEnabled,
         this.voiceLogEnabled,
+        this.inputMode,
       ] = await Promise.all([
         SettingsService.getDefaults(),
         SettingsService.get<boolean>('ttsEnabled', true),
         SettingsService.get<boolean>('gemmaEnabled', false),
         SettingsService.get<boolean>('audioRecordEnabled', false),
         SettingsService.get<boolean>('voiceLogEnabled', true),
+        SettingsService.get<InputMode>('inputMode', 'free'),
       ]);
 
       // tts.valueOnly는 localStorage에 저장 (SettingsService 독립)
@@ -329,6 +332,44 @@ export class SettingsPage {
           </div>
         </section>
 
+        <!-- 입력 모드 설정 (F035-이슈#4) -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">입력 방식</h2>
+
+          <div class="toggle-row" style="align-items:flex-start;gap:12px;">
+            <div style="flex:1;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px;">
+                <input
+                  type="radio"
+                  name="input-mode"
+                  value="free"
+                  id="input-mode-free"
+                  ${this.inputMode === 'free' ? 'checked' : ''}
+                  style="width:18px;height:18px;accent-color:var(--color-primary);flex-shrink:0;"
+                />
+                <span>
+                  <span class="toggle-label" style="display:block;">자유 모드</span>
+                  <span class="toggle-description" style="display:block;">항목명과 값을 함께 발화합니다. (예: "횡경 155")</span>
+                </span>
+              </label>
+              <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                <input
+                  type="radio"
+                  name="input-mode"
+                  value="guided"
+                  id="input-mode-guided"
+                  ${this.inputMode === 'guided' ? 'checked' : ''}
+                  style="width:18px;height:18px;accent-color:var(--color-primary);flex-shrink:0;margin-top:2px;"
+                />
+                <span>
+                  <span class="toggle-label" style="display:block;">가이드 모드</span>
+                  <span class="toggle-description" style="display:block;">앱이 항목을 차례로 말하고 사용자는 값만 발화합니다. '다음' / '패스' 로 현재 항목 건너뛰기.</span>
+                </span>
+              </label>
+            </div>
+          </div>
+        </section>
+
         <!-- 저장 버튼 -->
         <div class="save-area">
           <button class="btn btn-primary btn-full" id="save-btn" type="button" style="height:52px;font-size:18px;">
@@ -537,6 +578,17 @@ export class SettingsPage {
     ttsTestBtn?.addEventListener('click', () => {
       this.ttsService.unlock();
       this.ttsService.speak('횡경 200.0');
+    });
+
+    // 입력 모드 라디오 (F035-이슈#4)
+    const inputModeRadios = this.el.querySelectorAll<HTMLInputElement>('input[name="input-mode"]');
+    inputModeRadios.forEach((radio) => {
+      radio.addEventListener('change', async () => {
+        if (radio.checked) {
+          this.inputMode = radio.value as InputMode;
+          await SettingsService.set('inputMode', this.inputMode);
+        }
+      });
     });
 
     // TTS 메시지 축약 토글
