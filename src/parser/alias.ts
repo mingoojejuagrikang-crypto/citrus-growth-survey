@@ -52,7 +52,7 @@ export const FIELD_ALIASES: Record<string, string[]> = {
     '나무번',
   ],
 
-  // 조사과실 — 로그 확인 오인식: 거실, 마실사, 사실, 과일
+  // 조사과실 — 로그 확인 오인식: 거실, 마실사, 사실, 과일, 화실, 과일사, 교사, 마실
   fruitNo: [
     '조사과실',
     '과실',
@@ -66,6 +66,11 @@ export const FIELD_ALIASES: Record<string, string[]> = {
     '과실의',
     '과실번',
     '과일',
+    // F035 commit 5 — voice-logs-2026-04-22 log-analyzer 발굴 alias
+    '화실',      // HIGH (3건)
+    '과일사',    // HIGH (2건)
+    '교사',      // MEDIUM
+    '마실',      // MEDIUM
   ],
 
   // 농가명
