@@ -16,7 +16,7 @@
  */
 
 import type { ParseResult, ParserContext } from '../types.js';
-import { FIELD_VALUE_RANGES } from '../types.js';
+import { FIELD_VALUE_RANGES, FIELD_DATA_TYPES } from '../types.js';
 import { normalize, removeParticles } from './normalizer.js';
 import { resolveAlias, isKnownAlias, FIELD_ALIASES } from './alias.js';
 
@@ -108,11 +108,17 @@ function splitFieldAndValue(normalized: string): {
  * 텍스트 토큰과 alias 사전을 비교하여 가장 잘 매칭되는 필드 키를 찾습니다.
  *
  * @param tokens 텍스트 토큰 배열
- * @returns { fieldKey, score, method } 또는 null
+ * @param activeFields 현재 활성 필드 키 목록 (R3 컨텍스트 바이어싱)
+ * @returns { fieldKey, score, method, matchedIdx } 또는 null
  */
 function matchFieldFromTokens(
   tokens: string[],
+  activeFields: string[] = [],
 ): { fieldKey: string; score: number; method: ParseResult['method']; matchedIdx: number } | null {
+  /** R3: 활성 필드에 해당하면 점수에 +0.05 보너스 (1.0 초과 방지) */
+  const applyActiveBonus = (fieldKey: string, baseScore: number): number =>
+    activeFields.includes(fieldKey) ? Math.min(baseScore + 0.05, 1.0) : baseScore;
+
   // 각 토큰에 대해 조사 제거 후 alias 매칭
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]!;
@@ -121,19 +127,19 @@ function matchFieldFromTokens(
     // 1. 정확 일치 (alias 원본 그대로)
     if (isKnownAlias(cleaned)) {
       const fieldKey = resolveAlias(cleaned);
-      return { fieldKey, score: SCORE_ALIAS, method: 'alias', matchedIdx: i };
+      return { fieldKey, score: applyActiveBonus(fieldKey, SCORE_ALIAS), method: 'alias', matchedIdx: i };
     }
 
     // 2. 정확 일치 (필드 키 그대로)
     if (cleaned in FIELD_ALIASES) {
-      return { fieldKey: cleaned, score: SCORE_EXACT, method: 'exact', matchedIdx: i };
+      return { fieldKey: cleaned, score: applyActiveBonus(cleaned, SCORE_EXACT), method: 'exact', matchedIdx: i };
     }
 
     // 3. 소문자 정규화 후 재시도
     const lowerCleaned = cleaned.toLowerCase();
     if (isKnownAlias(lowerCleaned)) {
       const fieldKey = resolveAlias(lowerCleaned);
-      return { fieldKey, score: SCORE_NORMALIZED, method: 'normalized', matchedIdx: i };
+      return { fieldKey, score: applyActiveBonus(fieldKey, SCORE_NORMALIZED), method: 'normalized', matchedIdx: i };
     }
   }
   return null;
@@ -151,7 +157,7 @@ function matchFieldFromTokens(
  * @returns ParseResult
  */
 export function parse(rawText: string, context: ParserContext, alternatives: string[] = []): ParseResult {
-  const { lastField } = context;
+  const { lastField, activeFields } = context;
 
   // F031: 수정 프리픽스 감지
   // 파서가 이미 모르는 토큰("수정", "아니")을 스킵하므로 필드+값 추출은 정상 동작.
@@ -207,8 +213,8 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
   const { fieldPart, valuePart } = splitFieldAndValue(normalized);
   const tokens = fieldPart.split(/\s+/).filter((t) => t.length > 0);
 
-  // 4. alias 사전으로 필드 매칭
-  const match = matchFieldFromTokens(tokens);
+  // 4. alias 사전으로 필드 매칭 (R3: 활성 필드 바이어싱 포함)
+  const match = matchFieldFromTokens(tokens, activeFields);
 
   if (match === null) {
     // alternatives fallback (PI-003): rawText 매칭 실패 시 상위 3개 alternatives로 재시도
@@ -224,7 +230,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
       if (!altNorm) continue;
       const { fieldPart: altFP, valuePart: altVP } = splitFieldAndValue(altNorm);
       const altTokens = altFP.split(/\s+/).filter((t) => t.length > 0);
-      const altMatch = matchFieldFromTokens(altTokens);
+      const altMatch = matchFieldFromTokens(altTokens, activeFields);
       if (altMatch !== null) {
         const valueStr = altVP !== '' ? altVP : extractNumber(altNorm);
         const numericValue = valueStr !== null ? parseFloat(valueStr) : null;
@@ -302,6 +308,38 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
   // 5-a. 이후: F034 — 항목명만 인식 여부 (값 없음)
   const isFieldOnly = finalValueStr === null;
 
+  // F035-이슈#3: 데이터형 검증 — 정수/실수 필드에 비숫자 값이 들어오면 isFieldOnly로 폴백
+  // 비고 등 text 타입 필드는 텍스트 폴백을 허용하므로 제외합니다.
+  if (!isFieldOnly) {
+    const dataType = FIELD_DATA_TYPES[match.fieldKey]?.type;
+    if (dataType === 'integer' && (numericValue === null || !Number.isInteger(numericValue))) {
+      return {
+        field: match.fieldKey,
+        value: null,
+        numericValue: null,
+        score: match.score,
+        method: match.method,
+        isCorrection: false,
+        warning: 'data-type-mismatch',
+        hasCorrectionPrefix,
+        isFieldOnly: true,
+      };
+    }
+    if (dataType === 'decimal' && numericValue === null) {
+      return {
+        field: match.fieldKey,
+        value: null,
+        numericValue: null,
+        score: match.score,
+        method: match.method,
+        isCorrection: false,
+        warning: 'data-type-mismatch',
+        hasCorrectionPrefix,
+        isFieldOnly: true,
+      };
+    }
+  }
+
   // F025: 범위 검사 (primary 결과)
   const primaryInRange = numericValue !== null
     ? isInRange(match.fieldKey, numericValue)
@@ -329,7 +367,7 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
     if (!altNorm) continue;
     const { fieldPart: altFP, valuePart: altVP } = splitFieldAndValue(altNorm);
     const altTokens = altFP.split(/\s+/).filter((t) => t.length > 0);
-    const altMatch = matchFieldFromTokens(altTokens);
+    const altMatch = matchFieldFromTokens(altTokens, activeFields);
     if (altMatch !== null && altMatch.fieldKey === match.fieldKey) {
       const altValueStr = altVP !== '' ? altVP : extractNumber(altNorm);
       const altNumericValue = altValueStr !== null ? parseFloat(altValueStr) : null;

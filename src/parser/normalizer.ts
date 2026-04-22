@@ -220,6 +220,7 @@ const LEADING_NOISE_MIN_DIGITS = 5;
  * 3. 소수점 표현 정규화 ("점" → ".")
  * 3-1. 숫자 앞 단독 '이' 토큰 제거 ("이 155.5" → "155.5")
  * 4. 한국어 숫자 → 아라비아 숫자
+ * 4-1. "번" 접미사 정리 ("1번" → "1", F035)
  * 5. 불필요한 공백 정리
  *
  * @param rawText STT 원본 텍스트
@@ -293,9 +294,9 @@ export function normalize(rawText: string): string {
   // 3. 소수점 표현 정규화 (한국어 숫자 + 점 패턴 먼저 처리)
   result = normalizeDecimal(result);
 
-  // 3-1. "나무다" → "나무 4" (STT가 '사'를 '다'로 오인식하는 패턴 처리)
-  //      '다' 단독 변환 시 "다른", "다음" 등 오처리 위험이 있으므로 "나무" 뒤에 한정
-  result = result.replace(/나무\s*다(?=\s|$)/g, '나무 4');
+  // 3-1. [F035-이슈#3 제거] "나무 다" → "나무 4" 치환은 F035에서 삭제.
+  //      데이터형 검증(FIELD_DATA_TYPES)이 더 일반적인 방식으로 처리하므로
+  //      "나무 다" → isFieldOnly=true 로 폴백하여 재시도를 유도합니다.
 
   // 3-2. 숫자 앞에 붙은 단독 '이' 토큰 제거
   //      STT가 "종경 155.5"를 "존경이 155.5"로 출력하면 removeParticles 후
@@ -306,6 +307,10 @@ export function normalize(rawText: string): string {
 
   // 4. 남은 한국어 숫자를 아라비아 숫자로 변환
   result = koreanToNumber(result);
+
+  // 4-1. F035: 정수 필드 오전사 보정 — "1번"/"3번" → "1"/"3"
+  // treeNo/fruitNo 같은 정수 필드에서 STT가 "번" 접미사를 함께 전사하는 패턴 정리
+  result = result.replace(/(\d+)\s*번(?=\s|$)/g, '$1');
 
   // 5. 연속 공백 정리
   result = result.replace(/\s+/g, ' ').trim();
