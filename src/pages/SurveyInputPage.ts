@@ -1226,9 +1226,26 @@ export class SurveyInputPage {
       // TTS: 항목명만
       voiceStore.setEchoText(fieldLabel);
       const ttsCallMsA1 = this.ttsEnabled ? performance.now() - t0 : 0;
-      if (this.ttsEnabled && this.ttsService) {
-        this.ttsService.speak(fieldLabel);
-      }
+      // F035 commit 6 (PI-005): onStarted 콜백 추가 — ttsStartMs/speechEndToTtsStartMs 실측
+      let ttsStartMsA1 = 0;
+      let speechEndToTtsStartMsA1 = 0;
+      const ttsStartPromiseA1 = new Promise<void>((resolve) => {
+        if (this.ttsEnabled && this.ttsService) {
+          this.ttsService.speak(fieldLabel, undefined, {
+            onStarted: (ts: number) => {
+              ttsStartMsA1 = ts - t0;
+              speechEndToTtsStartMsA1 = ts - speechEndTs;
+              resolve();
+            },
+          });
+        } else {
+          resolve();
+        }
+      });
+      const ttsStartWithTimeoutA1 = Promise.race([
+        ttsStartPromiseA1,
+        new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+      ]);
 
       // 5초 타이머: 자동 해제 (다른 항목으로 교체된 경우는 noop)
       const waitingField = fieldKey;
@@ -1238,36 +1255,43 @@ export class SurveyInputPage {
         }
       }, 5_000);
 
-      // 로그 저장
+      // 로그 저장 — TTS onStarted 대기 후 기록 (비동기, 본 핸들러는 바로 return)
       if (this.voiceLogEnabled) {
-        const saveLogMsA1 = performance.now() - t0;
-        VoiceLogService.saveLog({
-          ts: now,
-          kind: 'ok',
-          rawText: event.transcript,
-          alternatives: event.alternatives,
-          parse: {
-            field: result.field,
-            value: null,
-            score: result.score,
-            method: result.method,
-          },
-          status: 'accepted',
-          message: fieldLabel,
-          audioFileId: null,
-          timing: {
-            asrMs,
-            parseMs,
-            ttsCallMs: ttsCallMsA1,
-            ttsStartMs: 0,
-            saveLogMs: saveLogMsA1,
-            speechEndToTtsStartMs: 0,  // F035-R2: A1 — onStarted 없음 (defer to commit 4)
-          },
-          session: storeState.sessionFields
-            ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
-            : undefined,
-          device: collectDeviceInfo(),
-        }).catch(() => {});
+        (async () => {
+          try {
+            await ttsStartWithTimeoutA1;
+            const saveLogMsA1 = performance.now() - t0;
+            await VoiceLogService.saveLog({
+              ts: now,
+              kind: 'ok',
+              rawText: event.transcript,
+              alternatives: event.alternatives,
+              parse: {
+                field: result.field,
+                value: null,
+                score: result.score,
+                method: result.method,
+              },
+              status: 'accepted',
+              message: fieldLabel,
+              audioFileId: null,
+              timing: {
+                asrMs,
+                parseMs,
+                ttsCallMs: ttsCallMsA1,
+                ttsStartMs: ttsStartMsA1,
+                saveLogMs: saveLogMsA1,
+                speechEndToTtsStartMs: speechEndToTtsStartMsA1,
+              },
+              session: storeState.sessionFields
+                ? `${storeState.sessionFields.surveyDate}_${storeState.sessionFields.farmerName}`
+                : undefined,
+              device: collectDeviceInfo(),
+            });
+          } catch {
+            // 로그 저장 실패 무시
+          }
+        })();
       }
       return;
     }
