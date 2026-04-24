@@ -329,24 +329,53 @@ export function parse(rawText: string, context: ParserContext, alternatives: str
   // 5-a. 이후: F034 — 항목명만 인식 여부 (값 없음)
   const isFieldOnly = finalValueStr === null;
 
-  // F035-이슈#3: 데이터형 검증 — 정수/실수 필드에 비숫자 값이 들어오면 isFieldOnly로 폴백
-  // 비고 등 text 타입 필드는 텍스트 폴백을 허용하므로 제외합니다.
+  // F035-이슈#3: 데이터형 검증 — 정수/실수 필드에 비숫자 값이 들어오면
+  //   (1) alternatives에 같은 필드의 유효한 숫자 값이 있으면 alt-fallback 채택
+  //   (2) 없으면 isFieldOnly로 폴백하여 재시도 유도
+  // Codex MEDIUM #4: alt 복구 루트가 막히던 문제 수정 (예: "나무 다" + alt "나무 4")
   if (!isFieldOnly) {
     const dataType = FIELD_DATA_TYPES[match.fieldKey]?.type;
-    if (dataType === 'integer' && (numericValue === null || !Number.isInteger(numericValue))) {
-      return {
-        field: match.fieldKey,
-        value: null,
-        numericValue: null,
-        score: match.score,
-        method: match.method,
-        isCorrection: false,
-        warning: 'data-type-mismatch',
-        hasCorrectionPrefix,
-        isFieldOnly: true,
-      };
-    }
-    if (dataType === 'decimal' && numericValue === null) {
+    const isMismatch =
+      (dataType === 'integer' && (numericValue === null || !Number.isInteger(numericValue))) ||
+      (dataType === 'decimal' && numericValue === null);
+
+    if (isMismatch) {
+      // alternatives에서 같은 필드의 유효 숫자 탐색
+      for (let altIdx = 0; altIdx < Math.min(alternatives.length, 3); altIdx++) {
+        const alt = alternatives[altIdx]!;
+        if (alt === rawText) continue;
+        const altNorm = normalize(alt);
+        if (!altNorm) continue;
+        const { fieldPart: altFP, valuePart: altVP } = splitFieldAndValue(altNorm);
+        const altTokens = altFP.split(/\s+/).filter((t) => t.length > 0);
+        const altMatch = matchFieldFromTokens(altTokens, activeFields);
+        if (altMatch !== null && altMatch.fieldKey === match.fieldKey) {
+          const altValueStr = altVP !== '' ? altVP : extractNumber(altNorm);
+          const altNumericValue = altValueStr !== null ? parseFloat(altValueStr) : null;
+          const altValid =
+            (dataType === 'integer' && altNumericValue !== null && Number.isInteger(altNumericValue)) ||
+            (dataType === 'decimal' && altNumericValue !== null);
+          if (altValid) {
+            const altInRange = isInRange(altMatch.fieldKey, altNumericValue!);
+            if (altInRange) {
+              return {
+                field: altMatch.fieldKey,
+                value: altValueStr,
+                numericValue: altNumericValue,
+                score: SCORE_ALT_FALLBACK,
+                method: 'alt-fallback',
+                isCorrection: false,
+                warning: null,
+                selectedAltIndex: altIdx,
+                hasCorrectionPrefix,
+                isFieldOnly: false,
+              };
+            }
+          }
+        }
+      }
+
+      // alt 복구 실패 → isFieldOnly로 폴백하여 재시도 유도
       return {
         field: match.fieldKey,
         value: null,

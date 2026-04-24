@@ -116,6 +116,8 @@ export class SurveyInputPage {
 
   // F035-이슈#4: 가이드 모드 컨트롤러 인스턴스 (inputMode === 'guided' 일 때만 생성)
   private guidedController: GuidedModeController | null = null;
+  /** Codex MEDIUM #3: guided start 지연 타이머 핸들 */
+  private guidedStartTimer: ReturnType<typeof setTimeout> | null = null;
 
   // F031/변경1C: 세션 필드 키 집합 (updateSessionFields 라우팅용)
   private static readonly SESSION_FIELD_KEYS = new Set<string>(['farmerName', 'label', 'treatment', 'treeNo']);
@@ -1208,9 +1210,13 @@ export class SurveyInputPage {
 
     const now = new Date().toISOString();
 
-    // ── Branch S: F035-이슈#4 스킵 명령 (가이드 모드에서만 동작) ──
-    if (result.isSkipCommand === true && this.guidedController?.isActive) {
-      this.guidedController.skipCurrent();
+    // ── Branch S: F035-이슈#4 스킵 명령 ──
+    // 가이드 모드: skipCurrent() 호출
+    // 자유 모드: 명령 인식했으므로 실패 TTS 대신 무음 무시 (Codex MEDIUM #5)
+    if (result.isSkipCommand === true) {
+      if (this.guidedController?.isActive) {
+        this.guidedController.skipCurrent();
+      }
       return;
     }
 
@@ -1699,6 +1705,11 @@ export class SurveyInputPage {
       this.isVoiceActive = false;
       this.updateVoiceBtnUI(false);
       // F035-이슈#4: 가이드 모드 일시 중지 (마이크 off)
+      // Codex MEDIUM #3: start 대기 타이머 clear
+      if (this.guidedStartTimer !== null) {
+        clearTimeout(this.guidedStartTimer);
+        this.guidedStartTimer = null;
+      }
       this.guidedController?.stop();
       if (this.ttsEnabled) this.ttsService?.speak('음성 입력 종료');
     } else {
@@ -1722,7 +1733,10 @@ export class SurveyInputPage {
           );
         }
         // TTS "음성 입력 시작" 재생 후 약간 딜레이 후 가이드 시작
-        setTimeout(() => {
+        // Codex MEDIUM #3: 핸들 추적 — toggleVoice off 시 clear
+        if (this.guidedStartTimer !== null) clearTimeout(this.guidedStartTimer);
+        this.guidedStartTimer = setTimeout(() => {
+          this.guidedStartTimer = null;
           if (this.guidedController && this.isVoiceActive) {
             this.guidedController.start();
           }
@@ -1845,7 +1859,20 @@ export class SurveyInputPage {
     const fruitNoInput = this.el?.querySelector<HTMLInputElement>('#session-fruit');
     const currentFruitNo = parseInt(fruitNoInput?.value ?? '1', 10) || 1;
 
-    // 현재 행 저장 (이상치 경고 무시 — 가이드 모드는 연속 입력 흐름 우선)
+    // Codex HIGH #2: handleSave 가드 준용 — 필수 세션 검증
+    if (!sessionFields.farmerName) {
+      showToast('농가명이 없어 가이드 모드를 중지합니다.', 'error');
+      this.guidedController?.stop();
+      if (this.ttsEnabled) this.ttsService?.speak('농가명을 선택하세요');
+      return { nextSession: this.getSessionFieldsForGuide() };
+    }
+    if (this.surveyType === 'quality' && (isNaN(currentFruitNo) || currentFruitNo < 1 || currentFruitNo > 5)) {
+      showToast('과실 번호 범위 오류로 가이드 모드를 중지합니다.', 'error');
+      this.guidedController?.stop();
+      return { nextSession: this.getSessionFieldsForGuide() };
+    }
+
+    // 레코드 구성
     const recordId = makeRecordId({
       surveyDate: sessionFields.surveyDate,
       farmerName: sessionFields.farmerName,
@@ -1859,12 +1886,25 @@ export class SurveyInputPage {
     const record = surveyStore.buildRecord(recordId, sessionKey, now);
     (record as GrowthRecord).fruitNo = currentFruitNo;
 
-    try {
-      await IndexedDBService.saveRecord(this.surveyType, record);
-      syncStore.incrementPending();
-    } catch (err) {
-      // 저장 실패해도 가이드 모드 계속
-      console.error('[GuidedModeController] finalizeRow 저장 실패:', err instanceof Error ? err.message : String(err));
+    // Codex HIGH #2: 중복 체크 — 존재 시 저장 생략 + 경고 토스트 (가이드 흐름 유지)
+    const existing = await IndexedDBService.getRecordById(this.surveyType, recordId);
+    if (existing) {
+      showToast(
+        `조사나무 ${sessionFields.treeNo}번, 과실 ${currentFruitNo}번 중복 — 덮어쓰기 생략`,
+        'warning',
+      );
+    } else {
+      // 이상치 경고는 가이드 모드에서는 로그만 남기고 저장 계속 (연속 입력 우선)
+      const validation = validateRecord(record);
+      if (validation.hasWarning) {
+        console.warn('[Guided] 이상치 경고 (저장 계속):', validation.warnings.join('; '));
+      }
+      try {
+        await IndexedDBService.saveRecord(this.surveyType, record);
+        syncStore.incrementPending();
+      } catch (err) {
+        console.error('[Guided] finalizeRow 저장 실패:', err instanceof Error ? err.message : String(err));
+      }
     }
 
     // store는 fruitNo만 초기화 (fruitNo reset + 측정값 유지)
@@ -1905,6 +1945,8 @@ export class SurveyInputPage {
 
     if (this.surveyType === 'quality' && fruitNoInput) {
       fruitNoInput.value = String(nextFruitNo);
+      // Codex HIGH #1: store 동기화 — DOM만 갱신하면 getFilledFieldsGuided()가 store를 읽어 fruitNo를 '미입력'으로 오판
+      surveyStore.updateField('fruitNo', nextFruitNo);
     }
 
     const nextSession = this.getSessionFieldsForGuide();

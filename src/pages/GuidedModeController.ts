@@ -78,6 +78,9 @@ export class GuidedModeController {
   /** 가이드 항목 순서 (GUIDED_FIELD_SEQUENCE fallback) */
   private readonly seq: readonly string[];
 
+  /** Codex MEDIUM #3: 활성 setTimeout 핸들 (stop() 시 전부 clear) */
+  private pendingTimers: Set<ReturnType<typeof setTimeout>> = new Set();
+
   /**
    * @param surveyType        조사 유형 ('growth' | 'quality')
    * @param ttsService        TtsService 인스턴스 (diff 알림용)
@@ -113,6 +116,20 @@ export class GuidedModeController {
   stop(): void {
     this.isActive = false;
     this.currentField = null;
+    // Codex MEDIUM #3: 대기 중인 타이머 전부 정리 (stale TTS/advance 방지)
+    for (const t of this.pendingTimers) clearTimeout(t);
+    this.pendingTimers.clear();
+  }
+
+  /**
+   * Codex MEDIUM #3: 추적되는 setTimeout — stop() 시 자동 정리.
+   */
+  private scheduleTimer(cb: () => void, ms: number): void {
+    const t = setTimeout(() => {
+      this.pendingTimers.delete(t);
+      if (this.isActive) cb();
+    }, ms);
+    this.pendingTimers.add(t);
   }
 
   /**
@@ -139,9 +156,7 @@ export class GuidedModeController {
           this.ttsService.speak(diffText);
         }
         // diff TTS 재생 후 잠시 대기하고 다음 행 첫 필드 안내
-        setTimeout(() => {
-          if (this.isActive) this.advance();
-        }, 900);
+        this.scheduleTimer(() => this.advance(), 900);
       } catch (err) {
         console.error('[GuidedModeController] finalizeRow 실패:', err instanceof Error ? err.message : String(err));
         // 저장 실패해도 가이드 모드 계속 (사용자가 직접 저장 버튼으로 처리 가능)
